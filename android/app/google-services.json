@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "375450566619",
+    "project_id": "cems-application",
+    "storage_bucket": "cems-application.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:375450566619:android:8c62cc78672f5b46e231fe",
+        "android_client_info": {
+          "package_name": "com.example.cems_application"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD5qwLUgyDe0ZIslkfR_5rv3JdxdSnDM8M"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
