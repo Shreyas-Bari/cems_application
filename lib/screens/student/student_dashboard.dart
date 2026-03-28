@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'scan_attendance_screen.dart';
+import '../../services/auth_services.dart';
+import '../login_screen.dart';
 
 class StudentDashboard extends StatefulWidget {
   final Map<String, dynamic> userData;
@@ -120,6 +122,18 @@ class _StudentDashboardState extends State<StudentDashboard> {
     return Scaffold(
       appBar: AppBar(
         title: Text('Welcome, ${widget.userData['name']}'),
+  actions: [
+    IconButton(
+      icon: Icon(Icons.logout),
+      onPressed: () async {
+        await AuthService().signOut();
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => LoginScreen()),
+        );
+      },
+    ),
+  ],
       ),
       floatingActionButton: FloatingActionButton.extended(
         icon: Icon(Icons.qr_code_scanner),
