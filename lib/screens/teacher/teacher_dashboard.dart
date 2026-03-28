@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'start_session_screen.dart';
 
 class TeacherDashboard extends StatefulWidget {
   final Map<String, dynamic> userData;
@@ -103,6 +104,7 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
 
         statsMap[subjectId] = {
           'name': subjectName,
+          'subjectId': subjectId,
           'division': data['division'],
           'lectures': 0,
           'labs': 0,
@@ -213,8 +215,7 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
                                     SizedBox(height: 4),
                                     Text(
                                       'Division: ${item['division']}',
-                                      style:
-                                          TextStyle(color: Colors.grey[600]),
+                                      style: TextStyle(color: Colors.grey[600]),
                                     ),
                                     SizedBox(height: 8),
                                     Row(
@@ -230,6 +231,25 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
                                           backgroundColor: Colors.purple[100],
                                         ),
                                       ],
+                                    ),
+                                    SizedBox(height: 8),
+                                    ElevatedButton.icon(
+                                      icon: Icon(Icons.qr_code),
+                                      label: Text('Start Session'),
+                                      onPressed: () {
+                                        Navigator.push(
+                                          context,
+                                          MaterialPageRoute(
+                                            builder: (_) => StartSessionScreen(
+                                              teacherId: widget.userData['uid'],
+                                              subjectId: item['subjectId'],
+                                              subjectName: item['name'],
+                                              division: item['division'],
+                                              type: 'lecture',
+                                            ),
+                                          ),
+                                        );
+                                      },
                                     ),
                                   ],
                                 ),
@@ -300,8 +320,8 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
                                 Center(child: CircularProgressIndicator()),
                           );
 
-                          final students = await _fetchStudentAttendance(
-                              stat['division']);
+                          final students =
+                              await _fetchStudentAttendance(stat['division']);
 
                           Navigator.pop(context);
 
