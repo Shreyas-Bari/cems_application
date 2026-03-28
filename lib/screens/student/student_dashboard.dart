@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'scan_attendance_screen.dart';
 
 class StudentDashboard extends StatefulWidget {
   final Map<String, dynamic> userData;
@@ -71,14 +72,11 @@ class _StudentDashboardState extends State<StudentDashboard> {
     final studentId = widget.userData['uid'];
     final division = widget.userData['division'];
 
-    // Get all sessions for this student's division
     final sessionsSnap = await _db
         .collection('sessions')
         .where('division', isEqualTo: division)
         .get();
 
-    // For each session, check if student has an attendance record
-    // Group results by subject
     Map<String, Map<String, dynamic>> subjectMap = {};
 
     for (var sessionDoc in sessionsSnap.docs) {
@@ -86,7 +84,6 @@ class _StudentDashboardState extends State<StudentDashboard> {
       final subjectId = sessionData['subjectId'];
       final sessionId = sessionDoc.id;
 
-      // Fetch subject name if we haven't already
       if (!subjectMap.containsKey(subjectId)) {
         final subjectDoc =
             await _db.collection('subjects').doc(subjectId).get();
@@ -101,10 +98,8 @@ class _StudentDashboardState extends State<StudentDashboard> {
         };
       }
 
-      // Count this session as one total
       subjectMap[subjectId]!['total'] += 1;
 
-      // Check if student was present in this session
       final attendanceSnap = await _db
           .collection('attendance')
           .where('sessionId', isEqualTo: sessionId)
@@ -125,6 +120,21 @@ class _StudentDashboardState extends State<StudentDashboard> {
     return Scaffold(
       appBar: AppBar(
         title: Text('Welcome, ${widget.userData['name']}'),
+      ),
+      floatingActionButton: FloatingActionButton.extended(
+        icon: Icon(Icons.qr_code_scanner),
+        label: Text('Scan Attendance'),
+        onPressed: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => ScanAttendanceScreen(
+                studentId: widget.userData['uid'],
+                division: widget.userData['division'],
+              ),
+            ),
+          );
+        },
       ),
       body: _isLoading
           ? Center(child: CircularProgressIndicator())
@@ -185,19 +195,24 @@ class _StudentDashboardState extends State<StudentDashboard> {
                                     ),
                                     SizedBox(height: 8),
                                     LinearProgressIndicator(
-                                      value: total == 0 ? 0 : present / total,
+                                      value: total == 0
+                                          ? 0
+                                          : present / total,
                                       backgroundColor: Colors.grey[300],
-                                      color:
-                                          isLow ? Colors.red : Colors.green,
+                                      color: isLow
+                                          ? Colors.red
+                                          : Colors.green,
                                     ),
                                     SizedBox(height: 6),
                                     Text(
                                       '$present / $total classes attended',
-                                      style: TextStyle(color: Colors.grey[600]),
+                                      style:
+                                          TextStyle(color: Colors.grey[600]),
                                     ),
                                     if (isLow)
                                       Padding(
-                                        padding: const EdgeInsets.only(top: 6),
+                                        padding:
+                                            const EdgeInsets.only(top: 6),
                                         child: Text(
                                           'Attendance below 75%',
                                           style: TextStyle(
@@ -237,13 +252,16 @@ class _StudentDashboardState extends State<StudentDashboard> {
                                       : Icons.menu_book,
                                 ),
                                 title: Text(item['subject']),
-                                subtitle:
-                                    Text('${item['day']} • ${item['time']}'),
+                                subtitle: Text(
+                                    '${item['day']} • ${item['time']}'),
                                 trailing: Chip(label: Text(item['type'])),
                               ),
                             );
                           }).toList(),
                         ),
+
+                  // Bottom padding so FAB doesn't cover last card
+                  SizedBox(height: 80),
                 ],
               ),
             ),
