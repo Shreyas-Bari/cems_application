@@ -12,18 +12,28 @@ class StudentDashboard extends StatefulWidget {
 class _StudentDashboardState extends State<StudentDashboard> {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
   List<Map<String, dynamic>> _schedule = [];
+  List<Map<String, dynamic>> _attendance = [];
   bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
-    _fetchSchedule();
+    _fetchData();
+  }
+
+  Future<void> _fetchData() async {
+    await Future.wait([
+      _fetchSchedule(),
+      _fetchAttendance(),
+    ]);
+    setState(() {
+      _isLoading = false;
+    });
   }
 
   Future<void> _fetchSchedule() async {
     final division = widget.userData['division'];
 
-    // Fetch all schedule entries for this student's division
     final scheduleSnap = await _db
         .collection('schedule')
         .where('division', isEqualTo: division)
@@ -33,8 +43,6 @@ class _StudentDashboardState extends State<StudentDashboard> {
 
     for (var doc in scheduleSnap.docs) {
       final data = doc.data();
-
-      // Fetch the subject name using the subjectId
       final subjectDoc =
           await _db.collection('subjects').doc(data['subjectId']).get();
       final subjectName = subjectDoc.exists
@@ -49,7 +57,6 @@ class _StudentDashboardState extends State<StudentDashboard> {
       });
     }
 
-    // Sort by day order
     const dayOrder = [
       'Monday', 'Tuesday', 'Wednesday',
       'Thursday', 'Friday', 'Saturday'
@@ -57,10 +64,60 @@ class _StudentDashboardState extends State<StudentDashboard> {
     scheduleList.sort((a, b) =>
         dayOrder.indexOf(a['day']) - dayOrder.indexOf(b['day']));
 
-    setState(() {
-      _schedule = scheduleList;
-      _isLoading = false;
-    });
+    _schedule = scheduleList;
+  }
+
+  Future<void> _fetchAttendance() async {
+    final studentId = widget.userData['uid'];
+    final division = widget.userData['division'];
+
+    // Get all sessions for this student's division
+    final sessionsSnap = await _db
+        .collection('sessions')
+        .where('division', isEqualTo: division)
+        .get();
+
+    // For each session, check if student has an attendance record
+    // Group results by subject
+    Map<String, Map<String, dynamic>> subjectMap = {};
+
+    for (var sessionDoc in sessionsSnap.docs) {
+      final sessionData = sessionDoc.data();
+      final subjectId = sessionData['subjectId'];
+      final sessionId = sessionDoc.id;
+
+      // Fetch subject name if we haven't already
+      if (!subjectMap.containsKey(subjectId)) {
+        final subjectDoc =
+            await _db.collection('subjects').doc(subjectId).get();
+        final subjectName = subjectDoc.exists
+            ? subjectDoc.data()!['name']
+            : 'Unknown Subject';
+
+        subjectMap[subjectId] = {
+          'name': subjectName,
+          'total': 0,
+          'present': 0,
+        };
+      }
+
+      // Count this session as one total
+      subjectMap[subjectId]!['total'] += 1;
+
+      // Check if student was present in this session
+      final attendanceSnap = await _db
+          .collection('attendance')
+          .where('sessionId', isEqualTo: sessionId)
+          .where('studentId', isEqualTo: studentId)
+          .where('status', isEqualTo: true)
+          .get();
+
+      if (attendanceSnap.docs.isNotEmpty) {
+        subjectMap[subjectId]!['present'] += 1;
+      }
+    }
+
+    _attendance = subjectMap.values.toList();
   }
 
   @override
@@ -71,11 +128,94 @@ class _StudentDashboardState extends State<StudentDashboard> {
       ),
       body: _isLoading
           ? Center(child: CircularProgressIndicator())
-          : Padding(
+          : SingleChildScrollView(
               padding: const EdgeInsets.all(16.0),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // --- Attendance Section ---
+                  Text(
+                    'Your Attendance',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  SizedBox(height: 12),
+                  _attendance.isEmpty
+                      ? Text('No attendance data found.')
+                      : Column(
+                          children: _attendance.map((item) {
+                            final total = item['total'] as int;
+                            final present = item['present'] as int;
+                            final percentage = total == 0
+                                ? 0.0
+                                : (present / total) * 100;
+                            final isLow = percentage < 75;
+
+                            return Card(
+                              margin: EdgeInsets.only(bottom: 10),
+                              child: Padding(
+                                padding: const EdgeInsets.all(16.0),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        Text(
+                                          item['name'],
+                                          style: TextStyle(
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                        Text(
+                                          '${percentage.toStringAsFixed(1)}%',
+                                          style: TextStyle(
+                                            fontSize: 16,
+                                            fontWeight: FontWeight.bold,
+                                            color: isLow
+                                                ? Colors.red
+                                                : Colors.green,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    SizedBox(height: 8),
+                                    LinearProgressIndicator(
+                                      value: total == 0 ? 0 : present / total,
+                                      backgroundColor: Colors.grey[300],
+                                      color:
+                                          isLow ? Colors.red : Colors.green,
+                                    ),
+                                    SizedBox(height: 6),
+                                    Text(
+                                      '$present / $total classes attended',
+                                      style: TextStyle(color: Colors.grey[600]),
+                                    ),
+                                    if (isLow)
+                                      Padding(
+                                        padding: const EdgeInsets.only(top: 6),
+                                        child: Text(
+                                          'Attendance below 75%',
+                                          style: TextStyle(
+                                            color: Colors.red,
+                                            fontSize: 12,
+                                          ),
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                              ),
+                            );
+                          }).toList(),
+                        ),
+
+                  SizedBox(height: 24),
+
+                  // --- Schedule Section ---
                   Text(
                     'Your Weekly Schedule',
                     style: TextStyle(
@@ -86,11 +226,8 @@ class _StudentDashboardState extends State<StudentDashboard> {
                   SizedBox(height: 12),
                   _schedule.isEmpty
                       ? Text('No schedule found for your division.')
-                      : ListView.builder(
-                          shrinkWrap: true,
-                          itemCount: _schedule.length,
-                          itemBuilder: (context, index) {
-                            final item = _schedule[index];
+                      : Column(
+                          children: _schedule.map((item) {
                             return Card(
                               margin: EdgeInsets.only(bottom: 10),
                               child: ListTile(
@@ -100,13 +237,12 @@ class _StudentDashboardState extends State<StudentDashboard> {
                                       : Icons.menu_book,
                                 ),
                                 title: Text(item['subject']),
-                                subtitle: Text('${item['day']} • ${item['time']}'),
-                                trailing: Chip(
-                                  label: Text(item['type']),
-                                ),
+                                subtitle:
+                                    Text('${item['day']} • ${item['time']}'),
+                                trailing: Chip(label: Text(item['type'])),
                               ),
                             );
-                          },
+                          }).toList(),
                         ),
                 ],
               ),
