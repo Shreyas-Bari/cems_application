@@ -34,7 +34,6 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
   Future<void> _fetchSchedule() async {
     final teacherId = widget.userData['uid'];
 
-    // Get all subjects this teacher teaches
     final subjectsSnap = await _db
         .collection('subjects')
         .where('teacherId', isEqualTo: teacherId)
@@ -45,7 +44,6 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
 
     if (subjectIds.isEmpty) return;
 
-    // Get schedule entries for those subjects
     List<Map<String, dynamic>> scheduleList = [];
 
     for (String subjectId in subjectIds) {
@@ -85,13 +83,11 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
   Future<void> _fetchSessionStats() async {
     final teacherId = widget.userData['uid'];
 
-    // Get all sessions conducted by this teacher
     final sessionsSnap = await _db
         .collection('sessions')
         .where('teacherId', isEqualTo: teacherId)
         .get();
 
-    // Group by subjectId
     Map<String, Map<String, dynamic>> statsMap = {};
 
     for (var doc in sessionsSnap.docs) {
@@ -121,6 +117,57 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
     }
 
     _sessionStats = statsMap.values.toList();
+  }
+
+  Future<List<Map<String, dynamic>>> _fetchStudentAttendance(
+      String division) async {
+    final studentsSnap = await _db
+        .collection('users')
+        .where('role', isEqualTo: 'student')
+        .where('division', isEqualTo: division)
+        .get();
+
+    final sessionsSnap = await _db
+        .collection('sessions')
+        .where('division', isEqualTo: division)
+        .get();
+
+    final totalSessions = sessionsSnap.docs.length;
+    final sessionIds = sessionsSnap.docs.map((doc) => doc.id).toList();
+
+    List<Map<String, dynamic>> studentStats = [];
+
+    for (var studentDoc in studentsSnap.docs) {
+      final studentData = studentDoc.data();
+      final studentId = studentDoc.id;
+
+      int present = 0;
+      for (String sessionId in sessionIds) {
+        final attendanceSnap = await _db
+            .collection('attendance')
+            .where('sessionId', isEqualTo: sessionId)
+            .where('studentId', isEqualTo: studentId)
+            .where('status', isEqualTo: true)
+            .get();
+
+        if (attendanceSnap.docs.isNotEmpty) present++;
+      }
+
+      final percentage =
+          totalSessions == 0 ? 0.0 : (present / totalSessions) * 100;
+
+      studentStats.add({
+        'name': studentData['name'],
+        'present': present,
+        'total': totalSessions,
+        'percentage': percentage,
+      });
+    }
+
+    studentStats.sort((a, b) =>
+        (a['percentage'] as double).compareTo(b['percentage'] as double));
+
+    return studentStats;
   }
 
   @override
@@ -179,8 +226,7 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
                                         ),
                                         SizedBox(width: 8),
                                         Chip(
-                                          label:
-                                              Text('${item['labs']} Labs'),
+                                          label: Text('${item['labs']} Labs'),
                                           backgroundColor: Colors.purple[100],
                                         ),
                                       ],
@@ -223,6 +269,110 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
                             );
                           }).toList(),
                         ),
+
+                  SizedBox(height: 24),
+
+                  // --- Student Attendance ---
+                  Text(
+                    'Student Attendance',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  SizedBox(height: 12),
+
+                  ..._sessionStats.map((stat) {
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: ElevatedButton.icon(
+                        icon: Icon(Icons.people),
+                        label: Text(
+                            'View Division ${stat['division']} Attendance'),
+                        style: ElevatedButton.styleFrom(
+                          minimumSize: Size(double.infinity, 50),
+                        ),
+                        onPressed: () async {
+                          showDialog(
+                            context: context,
+                            barrierDismissible: false,
+                            builder: (_) =>
+                                Center(child: CircularProgressIndicator()),
+                          );
+
+                          final students = await _fetchStudentAttendance(
+                              stat['division']);
+
+                          Navigator.pop(context);
+
+                          showModalBottomSheet(
+                            context: context,
+                            isScrollControlled: true,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.vertical(
+                                  top: Radius.circular(20)),
+                            ),
+                            builder: (_) => DraggableScrollableSheet(
+                              expand: false,
+                              initialChildSize: 0.6,
+                              maxChildSize: 0.95,
+                              builder: (_, controller) => Padding(
+                                padding: const EdgeInsets.all(16.0),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Division ${stat['division']} - Student Attendance',
+                                      style: TextStyle(
+                                        fontSize: 18,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                    SizedBox(height: 12),
+                                    Expanded(
+                                      child: ListView.builder(
+                                        controller: controller,
+                                        itemCount: students.length,
+                                        itemBuilder: (_, index) {
+                                          final s = students[index];
+                                          final isLow =
+                                              (s['percentage'] as double) < 75;
+                                          return ListTile(
+                                            leading: CircleAvatar(
+                                              backgroundColor: isLow
+                                                  ? Colors.red
+                                                  : Colors.green,
+                                              child: Text(
+                                                s['name'][0],
+                                                style: TextStyle(
+                                                    color: Colors.white),
+                                              ),
+                                            ),
+                                            title: Text(s['name']),
+                                            subtitle: Text(
+                                                '${s['present']} / ${s['total']} classes'),
+                                            trailing: Text(
+                                              '${(s['percentage'] as double).toStringAsFixed(1)}%',
+                                              style: TextStyle(
+                                                fontWeight: FontWeight.bold,
+                                                color: isLow
+                                                    ? Colors.red
+                                                    : Colors.green,
+                                              ),
+                                            ),
+                                          );
+                                        },
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    );
+                  }).toList(),
                 ],
               ),
             ),
