@@ -122,7 +122,9 @@ class _StartSessionScreenState extends State<StartSessionScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Start Session'),
+        title: Text(
+          widget.type == 'lab' ? 'Lab session' : 'Lecture session',
+        ),
         automaticallyImplyLeading: false,
       ),
       body: SingleChildScrollView(
@@ -144,7 +146,8 @@ class _StartSessionScreenState extends State<StartSessionScreen> {
                     ),
                     SizedBox(height: 4),
                     Text(
-                      'Division ${widget.division} • ${widget.type}',
+                      'Division ${widget.division} • '
+                      '${widget.type == 'lab' ? 'Lab' : 'Lecture'}',
                       style: TextStyle(color: Colors.grey[600]),
                     ),
                   ],
