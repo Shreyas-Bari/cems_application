@@ -257,6 +257,31 @@ class _StudentDashboardState extends State<StudentDashboard> {
 
   Widget _timetableSection(ThemeData theme) {
     final next = _nextClass();
+    const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+    String slotKey(String time) {
+      final t = time.toLowerCase();
+      if (t.contains('10') && t.contains('12')) return '10-12';
+      if ((t.contains('12') && t.contains('2')) ||
+          (t.contains('12') && t.contains('14')) ||
+          (t.contains('1') && t.contains('3'))) {
+        return '12-2';
+      }
+      return '';
+    }
+
+    final table = <String, Map<String, String>>{};
+    for (final d in days) {
+      table[d] = {'10-12': '-', '12-2': '-'};
+    }
+    for (final s in _schedule) {
+      final day = s['day']?.toString() ?? '';
+      if (!table.containsKey(day)) continue;
+      final key = slotKey(s['time']?.toString() ?? '');
+      if (key.isEmpty) continue;
+      table[day]![key] = s['subject']?.toString() ?? '-';
+    }
+
     return ListView(
       physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.all(16),
@@ -285,25 +310,14 @@ class _StudentDashboardState extends State<StudentDashboard> {
                 columnSpacing: 18,
                 columns: const [
                   DataColumn(label: Text('Day')),
-                  DataColumn(label: Text('Time')),
-                  DataColumn(label: Text('Subject')),
-                  DataColumn(label: Text('Type')),
+                  DataColumn(label: Text('10:00 AM - 12:00 PM')),
+                  DataColumn(label: Text('12:00 PM - 2:00 PM')),
                 ],
-                rows: _schedule.map((item) {
-                  final isLab = item['type'] == 'lab';
+                rows: days.map((day) {
                   return DataRow(cells: [
-                    DataCell(Text(item['day']?.toString() ?? '')),
-                    DataCell(Text(item['time']?.toString() ?? '')),
-                    DataCell(Text(item['subject']?.toString() ?? '')),
-                    DataCell(
-                      Text(
-                        isLab ? 'Lab' : 'Lecture',
-                        style: TextStyle(
-                          color: isLab ? theme.colorScheme.tertiary : theme.colorScheme.primary,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
+                    DataCell(Text(day)),
+                    DataCell(Text(table[day]!['10-12']!)),
+                    DataCell(Text(table[day]!['12-2']!)),
                   ]);
                 }).toList(),
               ),
@@ -366,14 +380,52 @@ class _StudentDashboardState extends State<StudentDashboard> {
       padding: const EdgeInsets.all(16),
       children: [
         Card(
-          child: ListTile(
-            leading: CircleAvatar(
-              child: Text((widget.userData['name']?.toString().isNotEmpty ?? false)
-                  ? widget.userData['name'].toString()[0].toUpperCase()
-                  : 'S'),
+          child: Padding(
+            padding: const EdgeInsets.all(18),
+            child: Column(
+              children: [
+                CircleAvatar(
+                  radius: 42,
+                  backgroundColor: theme.colorScheme.primaryContainer,
+                  child: Icon(
+                    Icons.person_outline,
+                    size: 44,
+                    color: theme.colorScheme.onPrimaryContainer,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  widget.userData['name']?.toString() ?? 'Student',
+                  style: theme.textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  widget.userData['email']?.toString() ?? '',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: theme.colorScheme.outline,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    OutlinedButton.icon(
+                      onPressed: null,
+                      icon: const Icon(Icons.photo_camera_outlined),
+                      label: const Text('Change'),
+                    ),
+                    const SizedBox(width: 8),
+                    OutlinedButton.icon(
+                      onPressed: null,
+                      icon: const Icon(Icons.delete_outline),
+                      label: const Text('Remove'),
+                    ),
+                  ],
+                ),
+              ],
             ),
-            title: Text(widget.userData['name']?.toString() ?? 'Student'),
-            subtitle: Text(widget.userData['email']?.toString() ?? ''),
           ),
         ),
         const SizedBox(height: 8),

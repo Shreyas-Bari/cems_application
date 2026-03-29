@@ -20,6 +20,15 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
   bool _isLoading = true;
   int _tabIndex = 0;
 
+  String _baseSubjectName(String name) {
+    final n = name.trim();
+    final lower = n.toLowerCase();
+    if (lower.endsWith(' lab')) {
+      return n.substring(0, n.length - 4).trim();
+    }
+    return n;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -66,7 +75,7 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
             : 'Unknown Subject';
 
         scheduleList.add({
-          'subject': subjectName,
+          'subject': _baseSubjectName(subjectName),
           'day': data['day'],
           'time': data['time'],
           'type': data['type'],
@@ -99,7 +108,8 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
 
     final subjectNameMap = <String, String>{};
     for (final doc in subjectsSnap.docs) {
-      subjectNameMap[doc.id] = doc.data()['name']?.toString() ?? 'Unknown Subject';
+      final raw = doc.data()['name']?.toString() ?? 'Unknown Subject';
+      subjectNameMap[doc.id] = _baseSubjectName(raw);
     }
 
     final scheduleSnap = await _db.collection('schedule').get();
@@ -116,12 +126,15 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
       final division = data['division']?.toString();
       if (subjectId == null || !subjectIds.contains(subjectId)) continue;
       if (division == null || division.isEmpty) continue;
-      final key = '$subjectId|$division';
+      final baseName = subjectNameMap[subjectId] ?? 'Unknown Subject';
+      final key = '$baseName|$division';
       statsMap.putIfAbsent(
         key,
         () => {
-          'name': subjectNameMap[subjectId] ?? 'Unknown Subject',
-          'subjectId': subjectId,
+          'name': baseName,
+          'lectureSubjectId': null,
+          'labSubjectId': null,
+          'subjectIds': <String>{},
           'division': division,
           'lectures': 0,
           'labs': 0,
@@ -130,10 +143,13 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
         },
       );
       final t = data['type']?.toString() == 'lab' ? 'lab' : 'lecture';
+      (statsMap[key]!['subjectIds'] as Set<String>).add(subjectId);
       if (t == 'lab') {
         statsMap[key]!['hasLabSlot'] = true;
+        statsMap[key]!['labSubjectId'] ??= subjectId;
       } else {
         statsMap[key]!['hasLectureSlot'] = true;
+        statsMap[key]!['lectureSubjectId'] ??= subjectId;
       }
     }
 
@@ -143,7 +159,8 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
       final division = data['division']?.toString();
       if (subjectId == null || !subjectIds.contains(subjectId)) continue;
       if (division == null || division.isEmpty) continue;
-      final key = '$subjectId|$division';
+      final baseName = subjectNameMap[subjectId] ?? 'Unknown Subject';
+      final key = '$baseName|$division';
       if (!statsMap.containsKey(key)) continue;
       final t = data['type']?.toString() == 'lab' ? 'lab' : 'lecture';
       if (t == 'lab') {
@@ -167,7 +184,7 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
   /// scoped to this teacher only.
   Future<List<Map<String, dynamic>>> _fetchStudentAttendanceForSubject({
     required String division,
-    required String subjectId,
+    required Set<String> subjectIds,
   }) async {
     final studentsSnap = await _db
         .collection('users')
@@ -175,16 +192,19 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
         .where('division', isEqualTo: division)
         .get();
 
-    final sessionsSnap = await _db
+    final allSessions = await _db
         .collection('sessions')
         .where('division', isEqualTo: division)
         .where('teacherId', isEqualTo: widget.userData['uid'])
-        .where('subjectId', isEqualTo: subjectId)
         .get();
+    final sessions = allSessions.docs.where((d) {
+      final sid = d.data()['subjectId']?.toString() ?? '';
+      return subjectIds.contains(sid);
+    }).toList();
 
     final lectureSessionIds = <String>[];
     final labSessionIds = <String>[];
-    for (final d in sessionsSnap.docs) {
+    for (final d in sessions) {
       final t = d.data()['type']?.toString();
       if (t == 'lab') {
         labSessionIds.add(d.id);
@@ -274,7 +294,8 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
               child: FilledButton.tonalIcon(
                 onPressed: hasLecture
                     ? () => _openSession(
-                          item['subjectId'] as String,
+                          (item['lectureSubjectId'] ??
+                              item['labSubjectId']) as String,
                           item['name'] as String,
                           item['division'] as String,
                           'lecture',
@@ -289,7 +310,8 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
               child: FilledButton.tonalIcon(
                 onPressed: hasLab
                     ? () => _openSession(
-                          item['subjectId'] as String,
+                          (item['labSubjectId'] ??
+                              item['lectureSubjectId']) as String,
                           item['name'] as String,
                           item['division'] as String,
                           'lab',
@@ -317,7 +339,8 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
         const SizedBox(height: 12),
         OutlinedButton.icon(
           onPressed: () => _openSubjectAttendanceSheet(
-            subjectId: item['subjectId'] as String,
+            subjectIds:
+                (item['subjectIds'] as Set<String>).toSet(),
             subjectName: item['name'] as String,
             division: item['division'] as String,
           ),
@@ -329,7 +352,7 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
   }
 
   Future<void> _openSubjectAttendanceSheet({
-    required String subjectId,
+    required Set<String> subjectIds,
     required String subjectName,
     required String division,
   }) async {
@@ -341,7 +364,7 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
 
     final students = await _fetchStudentAttendanceForSubject(
       division: division,
-      subjectId: subjectId,
+      subjectIds: subjectIds,
     );
 
     if (context.mounted) Navigator.pop(context);
@@ -416,6 +439,9 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
                               'Lab: $labP/$labT (${labPct.toStringAsFixed(0)}%)',
                             ),
                             isThreeLine: true,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
                             trailing: Text(
                               '${overallPct.toStringAsFixed(1)}%',
                               style: TextStyle(
@@ -436,7 +462,7 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
 
   Color _attendanceColor(double pct, ThemeData theme) {
     if (pct >= 75) return Colors.green;
-    if (pct >= 60) return Colors.orange;
+    if (pct >= 60) return const Color(0xFFE0A800);
     return theme.colorScheme.error;
   }
 
@@ -577,16 +603,52 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
       padding: const EdgeInsets.all(16),
       children: [
         Card(
-          child: ListTile(
-            leading: CircleAvatar(
-              child: Text(
-                (widget.userData['name']?.toString().isNotEmpty ?? false)
-                    ? widget.userData['name'].toString()[0].toUpperCase()
-                    : 'T',
-              ),
+          child: Padding(
+            padding: const EdgeInsets.all(18),
+            child: Column(
+              children: [
+                CircleAvatar(
+                  radius: 42,
+                  backgroundColor: theme.colorScheme.primaryContainer,
+                  child: Icon(
+                    Icons.person_outline,
+                    size: 44,
+                    color: theme.colorScheme.onPrimaryContainer,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  widget.userData['name']?.toString() ?? 'Teacher',
+                  style: theme.textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  widget.userData['email']?.toString() ?? '',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: theme.colorScheme.outline,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    OutlinedButton.icon(
+                      onPressed: null,
+                      icon: const Icon(Icons.photo_camera_outlined),
+                      label: const Text('Change'),
+                    ),
+                    const SizedBox(width: 8),
+                    OutlinedButton.icon(
+                      onPressed: null,
+                      icon: const Icon(Icons.delete_outline),
+                      label: const Text('Remove'),
+                    ),
+                  ],
+                ),
+              ],
             ),
-            title: Text(widget.userData['name']?.toString() ?? 'Teacher'),
-            subtitle: Text(widget.userData['email']?.toString() ?? ''),
           ),
         ),
         const SizedBox(height: 12),
