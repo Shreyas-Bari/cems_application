@@ -51,7 +51,7 @@ class _StudentDashboardState extends State<StudentDashboard> {
       final subjectDoc =
           await _db.collection('subjects').doc(data['subjectId']).get();
       final subjectName = subjectDoc.exists
-          ? subjectDoc.data()!['name']
+          ? subjectDoc.data()!['name']?.toString() ?? 'Unknown Subject'
           : 'Unknown Subject';
 
       scheduleList.add({
@@ -59,6 +59,7 @@ class _StudentDashboardState extends State<StudentDashboard> {
         'day': data['day'],
         'time': data['time'],
         'type': data['type'],
+        'batch': data['batch'],
       });
     }
 
@@ -90,13 +91,13 @@ class _StudentDashboardState extends State<StudentDashboard> {
       if (subjectId == null || subjectId.isEmpty) continue;
 
       final sessionType =
-          sessionData['type']?.toString() == 'lab' ? 'lab' : 'lecture';
+          _isFirestoreLab(sessionData['type']) ? 'lab' : 'lecture';
 
       if (!bySubject.containsKey(subjectId)) {
         final subjectDoc =
             await _db.collection('subjects').doc(subjectId).get();
         final subjectName = subjectDoc.exists
-            ? subjectDoc.data()!['name']
+            ? subjectDoc.data()!['name']?.toString() ?? 'Unknown Subject'
             : 'Unknown Subject';
 
         bySubject[subjectId] = {
@@ -143,6 +144,52 @@ class _StudentDashboardState extends State<StudentDashboard> {
   double _pct(int present, int total) =>
       total == 0 ? 0.0 : (present / total) * 100;
 
+  bool _isFirestoreLab(dynamic type) =>
+      type?.toString().trim().toLowerCase() == 'lab';
+
+  String _typeLabelFromFirestore(dynamic type) {
+    final raw = type?.toString().trim() ?? '';
+    final lower = raw.toLowerCase();
+    if (lower == 'lab') return 'Lab';
+    if (lower == 'lecture') return 'Lecture';
+    if (raw.isEmpty) return '—';
+    return raw;
+  }
+
+  /// Same clock parsing as the weekly table columns (first time in the string).
+  ({int hour24, int minute})? _parseScheduleTimeStart(String time) {
+    final t = time.toLowerCase().replaceAll('.', ':');
+    int? startHour24;
+    var minute = 0;
+    final matchAmPm = RegExp(r'(\d{1,2})(?::(\d{2}))?\s*(am|pm)').firstMatch(t);
+    if (matchAmPm != null) {
+      var hour = int.parse(matchAmPm.group(1)!);
+      minute = int.parse(matchAmPm.group(2) ?? '0');
+      final ampm = matchAmPm.group(3)!;
+      if (ampm == 'pm' && hour != 12) hour += 12;
+      if (ampm == 'am' && hour == 12) hour = 0;
+      startHour24 = hour;
+    } else {
+      final match24 = RegExp(r'(\d{1,2})(?::(\d{2}))?').firstMatch(t);
+      if (match24 != null) {
+        startHour24 = int.parse(match24.group(1)!);
+        minute = int.parse(match24.group(2) ?? '0');
+      }
+    }
+    if (startHour24 == null) return null;
+    return (hour24: startHour24, minute: minute);
+  }
+
+  String _slotKeyFromTime(String time) {
+    final parsed = _parseScheduleTimeStart(time);
+    if (parsed == null) return '';
+    final h = parsed.hour24;
+    // Morning block (before noon) → first column; afternoon → second.
+    if (h >= 8 && h < 12) return '10-12';
+    if (h >= 12 && h < 14) return '12-2';
+    return '';
+  }
+
   Map<String, dynamic>? _nextClass() {
     if (_schedule.isEmpty) return null;
     final now = DateTime.now();
@@ -163,14 +210,10 @@ class _StudentDashboardState extends State<StudentDashboard> {
       final targetWeekday = dayOrder[day];
       if (targetWeekday == null) return null;
 
-      final firstPart = time.split('to').first.trim().toLowerCase();
-      final match = RegExp(r'^(\d{1,2}):(\d{2})\s*(am|pm)$').firstMatch(firstPart);
-      if (match == null) return null;
-      int hour = int.parse(match.group(1)!);
-      final minute = int.parse(match.group(2)!);
-      final ampm = match.group(3)!;
-      if (ampm == 'pm' && hour != 12) hour += 12;
-      if (ampm == 'am' && hour == 12) hour = 0;
+      final parsed = _parseScheduleTimeStart(time);
+      if (parsed == null) return null;
+      final hour = parsed.hour24;
+      final minute = parsed.minute;
 
       int delta = targetWeekday - currentWeekday;
       if (delta < 0) delta += 7;
@@ -259,17 +302,6 @@ class _StudentDashboardState extends State<StudentDashboard> {
     final next = _nextClass();
     const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
-    String slotKey(String time) {
-      final t = time.toLowerCase();
-      if (t.contains('10') && t.contains('12')) return '10-12';
-      if ((t.contains('12') && t.contains('2')) ||
-          (t.contains('12') && t.contains('14')) ||
-          (t.contains('1') && t.contains('3'))) {
-        return '12-2';
-      }
-      return '';
-    }
-
     final table = <String, Map<String, String>>{};
     for (final d in days) {
       table[d] = {'10-12': '-', '12-2': '-'};
@@ -277,9 +309,15 @@ class _StudentDashboardState extends State<StudentDashboard> {
     for (final s in _schedule) {
       final day = s['day']?.toString() ?? '';
       if (!table.containsKey(day)) continue;
-      final key = slotKey(s['time']?.toString() ?? '');
+      final key = _slotKeyFromTime(s['time']?.toString() ?? '');
       if (key.isEmpty) continue;
-      table[day]![key] = s['subject']?.toString() ?? '-';
+      final label = s['subject']?.toString() ?? '-';
+      final prev = table[day]![key]!;
+      if (prev == '-' || prev.isEmpty) {
+        table[day]![key] = label;
+      } else if (!prev.split('\n').contains(label)) {
+        table[day]![key] = '$prev\n$label';
+      }
     }
 
     return ListView(
@@ -294,8 +332,14 @@ class _StudentDashboardState extends State<StudentDashboard> {
           ScheduleCard(
             title: next['subject'] as String,
             time: next['time']?.toString() ?? '',
-            subtitle: '${next['day']} • ${next['type'] == 'lab' ? 'Lab' : 'Lecture'}',
-            isLab: next['type'] == 'lab',
+            subtitle: () {
+              final parts = <String>[next['day']?.toString() ?? ''];
+              final b = next['batch']?.toString().trim();
+              if (b != null && b.isNotEmpty) parts.add('Batch $b');
+              parts.add(_typeLabelFromFirestore(next['type']));
+              return parts.join(' • ');
+            }(),
+            isLab: _isFirestoreLab(next['type']),
           ),
         const SizedBox(height: 12),
         Text('Weekly timetable', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),

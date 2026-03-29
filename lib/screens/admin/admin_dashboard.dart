@@ -681,7 +681,7 @@ class _AdminDashboardState extends State<AdminDashboard>
                     future: _db.collection('subjects').doc(sid).get(),
                     builder: (context, subSnap) {
                       final subName = subSnap.hasData && subSnap.data!.exists
-                          ? (subSnap.data!.data()!['name'] ?? sid)
+                          ? (subSnap.data!.data()!['name']?.toString() ?? sid)
                           : sid;
                       final isLab = data['type'] == 'lab';
                       return Card(
