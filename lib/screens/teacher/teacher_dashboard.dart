@@ -377,7 +377,7 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
                                                   ? Colors.red
                                                   : Colors.green,
                                               child: Text(
-                                                s['name'][0],
+                                                (s['name'] != null && s['name'].isNotEmpty) ? s['name'][0] : '?',
                                                 style: TextStyle(
                                                     color: Colors.white),
                                               ),
