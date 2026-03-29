@@ -81,10 +81,13 @@ class _ScanAttendanceScreenState extends State<ScanAttendanceScreen> {
       return;
     }
 
-    // All checks passed - mark attendance
+    // All checks passed - mark attendance (sessionType mirrors session for rules & stats)
+    final sessionType = sessionData['type']?.toString() ?? 'lecture';
     await _db.collection('attendance').add({
       'sessionId': sessionId,
       'studentId': widget.studentId,
+      'subjectId': sessionData['subjectId'],
+      'sessionType': sessionType,
       'status': true,
       'markedAt': Timestamp.now(),
     });
@@ -101,7 +104,7 @@ class _ScanAttendanceScreenState extends State<ScanAttendanceScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Scan Attendance'),
+        title: const Text('Scan attendance'),
       ),
       body: _done
           ? Center(

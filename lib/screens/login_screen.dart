@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/auth_services.dart';
+import 'admin/admin_dashboard.dart';
 import 'student/student_dashboard.dart';
 import 'teacher/teacher_dashboard.dart';
 
@@ -39,36 +40,64 @@ class _LoginScreenState extends State<LoginScreen> {
       return;
     }
 
-    // Route based on role
-    if (userData['role'] == 'student') {
+    final role = userData['role']?.toString();
+    if (role == 'student') {
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
           builder: (_) => StudentDashboard(userData: userData),
         ),
       );
-    } else if (userData['role'] == 'teacher') {
+    } else if (role == 'teacher') {
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
           builder: (_) => TeacherDashboard(userData: userData),
         ),
       );
+    } else if (role == 'admin') {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (_) => AdminDashboard(userData: userData),
+        ),
+      );
+    } else {
+      setState(() {
+        _errorMessage = 'Unknown account role. Contact admin.';
+      });
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Scaffold(
       body: Center(
         child: Padding(
           padding: const EdgeInsets.all(32.0),
-          child: Column(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 400),
+            child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
+              Icon(
+                Icons.school_rounded,
+                size: 56,
+                color: theme.colorScheme.primary,
+              ),
+              SizedBox(height: 16),
               Text(
-                'College App',
-                style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
+                'CEMS',
+                style: theme.textTheme.headlineMedium?.copyWith(
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              Text(
+                'College attendance & schedule',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.colorScheme.outline,
+                ),
               ),
               SizedBox(height: 40),
               TextField(
@@ -93,14 +122,15 @@ class _LoginScreenState extends State<LoginScreen> {
               SizedBox(height: 8),
               _isLoading
                   ? CircularProgressIndicator()
-                  : ElevatedButton(
+                  : FilledButton(
                       onPressed: _login,
-                      style: ElevatedButton.styleFrom(
+                      style: FilledButton.styleFrom(
                         minimumSize: Size(double.infinity, 50),
                       ),
-                      child: Text('Login'),
+                      child: Text('Sign in'),
                     ),
             ],
+          ),
           ),
         ),
       ),
