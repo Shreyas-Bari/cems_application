@@ -49,6 +49,23 @@ class AppTheme {
         elevation: 2,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       ),
+      navigationBarTheme: NavigationBarThemeData(
+        backgroundColor: const Color(0xFFEDEBFF),
+        indicatorColor: const Color(0xFFD7D0FF),
+        iconTheme: WidgetStateProperty.resolveWith((states) {
+          final selected = states.contains(WidgetState.selected);
+          return IconThemeData(
+            color: selected ? const Color(0xFF4C3FAF) : const Color(0xFF4D4D66),
+          );
+        }),
+        labelTextStyle: WidgetStateProperty.resolveWith((states) {
+          final selected = states.contains(WidgetState.selected);
+          return TextStyle(
+            fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+            color: selected ? const Color(0xFF4C3FAF) : const Color(0xFF4D4D66),
+          );
+        }),
+      ),
     );
   }
 }
