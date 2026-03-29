@@ -30,8 +30,41 @@ class _StartSessionScreenState extends State<StartSessionScreen> {
   String _currentToken = '';
   Timer? _tokenRefreshTimer;
   bool _sessionStarted = false;
+  bool _isValidSetup = false;
+  bool _isCheckingSetup = true;
   int _secondsLeft = 15;
   Timer? _countdownTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _validateSetup();
+  }
+
+  Future<void> _validateSetup() async {
+    final subject = await _db.collection('subjects').doc(widget.subjectId).get();
+    if (!subject.exists || subject.data()?['teacherId'] != widget.teacherId) {
+      if (!mounted) return;
+      setState(() {
+        _isValidSetup = false;
+        _isCheckingSetup = false;
+      });
+      return;
+    }
+
+    final schedule = await _db
+        .collection('schedule')
+        .where('subjectId', isEqualTo: widget.subjectId)
+        .where('division', isEqualTo: widget.division)
+        .where('type', isEqualTo: widget.type)
+        .limit(1)
+        .get();
+    if (!mounted) return;
+    setState(() {
+      _isValidSetup = schedule.docs.isNotEmpty;
+      _isCheckingSetup = false;
+    });
+  }
 
   String _generateToken() {
     const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
@@ -40,6 +73,7 @@ class _StartSessionScreenState extends State<StartSessionScreen> {
   }
 
   Future<void> _startSession() async {
+    if (!_isValidSetup) return;
     final token = _generateToken();
     final now = DateTime.now();
 
@@ -157,7 +191,31 @@ class _StartSessionScreenState extends State<StartSessionScreen> {
 
             SizedBox(height: 32),
 
-            if (!_sessionStarted) ...[
+            if (_isCheckingSetup) ...[
+              const CircularProgressIndicator(),
+              const SizedBox(height: 16),
+              Text(
+                'Verifying subject and schedule setup...',
+                style: TextStyle(color: Colors.grey[600]),
+              ),
+            ],
+
+            if (!_isCheckingSetup && !_isValidSetup) ...[
+              Icon(Icons.warning_amber_rounded, size: 48, color: Colors.orange[700]),
+              const SizedBox(height: 12),
+              Text(
+                'Session cannot be started.\nAdmin must assign this subject/division with ${widget.type}.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.grey[700]),
+              ),
+              const SizedBox(height: 16),
+              OutlinedButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Go back'),
+              ),
+            ],
+
+            if (!_sessionStarted && !_isCheckingSetup && _isValidSetup) ...[
               Text(
                 'Press the button below to start the session and generate a QR code for attendance.',
                 textAlign: TextAlign.center,
