@@ -83,7 +83,8 @@ class _ScanAttendanceScreenState extends State<ScanAttendanceScreen> {
 
     // All checks passed - mark attendance (sessionType mirrors session for rules & stats)
     final sessionType = sessionData['type']?.toString() ?? 'lecture';
-    await _db.collection('attendance').add({
+    final attendanceId = '${sessionId}_${widget.studentId}';
+    await _db.collection('attendance').doc(attendanceId).set({
       'sessionId': sessionId,
       'studentId': widget.studentId,
       'subjectId': sessionData['subjectId'],

@@ -3,9 +3,11 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'firebase_options.dart';
+import 'screens/admin/admin_dashboard.dart';
 import 'screens/login_screen.dart';
 import 'screens/student/student_dashboard.dart';
 import 'screens/teacher/teacher_dashboard.dart';
+import 'theme/app_theme.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -21,8 +23,9 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'College App',
+      title: 'CEMS',
       debugShowCheckedModeBanner: false,
+      theme: AppTheme.light(),
       home: StreamBuilder<User?>(
         stream: FirebaseAuth.instance.authStateChanges(),
         builder: (context, snapshot) {
@@ -49,11 +52,14 @@ class MyApp extends StatelessWidget {
                     userSnap.data!.data() as Map<String, dynamic>;
                 userData['uid'] = snapshot.data!.uid;
 
-                if (userData['role'] == 'student') {
+                final role = userData['role']?.toString();
+                if (role == 'student') {
                   return StudentDashboard(userData: userData);
-                } else {
-                  return TeacherDashboard(userData: userData);
                 }
+                if (role == 'admin') {
+                  return AdminDashboard(userData: userData);
+                }
+                return TeacherDashboard(userData: userData);
               },
             );
           }

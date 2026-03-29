@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'scan_attendance_screen.dart';
 import '../../services/auth_services.dart';
 import '../login_screen.dart';
+import '../../widgets/schedule_card.dart';
 
 class StudentDashboard extends StatefulWidget {
   final Map<String, dynamic> userData;
@@ -17,6 +18,7 @@ class _StudentDashboardState extends State<StudentDashboard> {
   List<Map<String, dynamic>> _schedule = [];
   List<Map<String, dynamic>> _attendanceRows = [];
   bool _isLoading = true;
+  int _tabIndex = 0;
 
   @override
   void initState() {
@@ -141,43 +143,96 @@ class _StudentDashboardState extends State<StudentDashboard> {
   double _pct(int present, int total) =>
       total == 0 ? 0.0 : (present / total) * 100;
 
+  Map<String, dynamic>? _nextClass() {
+    if (_schedule.isEmpty) return null;
+    final now = DateTime.now();
+    const dayOrder = {
+      'Monday': 1,
+      'Tuesday': 2,
+      'Wednesday': 3,
+      'Thursday': 4,
+      'Friday': 5,
+      'Saturday': 6,
+      'Sunday': 7,
+    };
+    final currentWeekday = now.weekday;
+
+    DateTime? parseSlotStart(Map<String, dynamic> slot) {
+      final day = slot['day']?.toString() ?? '';
+      final time = slot['time']?.toString() ?? '';
+      final targetWeekday = dayOrder[day];
+      if (targetWeekday == null) return null;
+
+      final firstPart = time.split('to').first.trim().toLowerCase();
+      final match = RegExp(r'^(\d{1,2}):(\d{2})\s*(am|pm)$').firstMatch(firstPart);
+      if (match == null) return null;
+      int hour = int.parse(match.group(1)!);
+      final minute = int.parse(match.group(2)!);
+      final ampm = match.group(3)!;
+      if (ampm == 'pm' && hour != 12) hour += 12;
+      if (ampm == 'am' && hour == 12) hour = 0;
+
+      int delta = targetWeekday - currentWeekday;
+      if (delta < 0) delta += 7;
+      var dt = DateTime(now.year, now.month, now.day, hour, minute)
+          .add(Duration(days: delta));
+      if (delta == 0 && dt.isBefore(now)) {
+        dt = dt.add(const Duration(days: 7));
+      }
+      return dt;
+    }
+
+    Map<String, dynamic>? best;
+    DateTime? bestTime;
+    for (final s in _schedule) {
+      final dt = parseSlotStart(s);
+      if (dt == null) continue;
+      if (bestTime == null || dt.isBefore(bestTime)) {
+        bestTime = dt;
+        best = s;
+      }
+    }
+    return best;
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final pages = <Widget>[
+      _attendanceSection(theme),
+      _timetableSection(theme),
+      _profileSection(theme),
+    ];
+    final titles = ['Attendance', 'Weekly timetable', 'Profile'];
 
     return Scaffold(
       appBar: AppBar(
-        title: Text('Welcome, ${widget.userData['name']}'),
+        title: Text(titles[_tabIndex]),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.logout),
-            onPressed: () async {
-              await AuthService().signOut();
-              if (context.mounted) {
-                Navigator.pushReplacement(
-                  context,
-                  MaterialPageRoute(builder: (_) => const LoginScreen()),
-                );
-              }
-            },
-          ),
+          if (_tabIndex != 2)
+            IconButton(
+              icon: const Icon(Icons.account_circle_outlined),
+              onPressed: () => setState(() => _tabIndex = 2),
+            ),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        icon: const Icon(Icons.qr_code_scanner),
-        label: const Text('Scan attendance'),
-        onPressed: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => ScanAttendanceScreen(
-                studentId: widget.userData['uid'],
-                division: widget.userData['division'],
-              ),
-            ),
-          );
-        },
-      ),
+      floatingActionButton: _tabIndex == 0
+          ? FloatingActionButton.extended(
+              icon: const Icon(Icons.qr_code_scanner),
+              label: const Text('Scan'),
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => ScanAttendanceScreen(
+                      studentId: widget.userData['uid'],
+                      division: widget.userData['division'],
+                    ),
+                  ),
+                );
+              },
+            )
+          : null,
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : RefreshIndicator(
@@ -186,133 +241,174 @@ class _StudentDashboardState extends State<StudentDashboard> {
                 await _fetchData();
                 setState(() => _isLoading = false);
               },
-              child: SingleChildScrollView(
-                physics: const AlwaysScrollableScrollPhysics(),
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Your attendance',
-                      style: theme.textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Lecture and lab are tracked separately per subject.',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.outline,
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    if (_attendanceRows.isEmpty)
-                      Text(
-                        'No sessions recorded yet for your division.',
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          color: theme.colorScheme.outline,
-                        ),
-                      )
-                    else
-                      ..._attendanceRows.map((item) {
-                        final lecT = item['lectureTotal'] as int;
-                        final lecP = item['lecturePresent'] as int;
-                        final labT = item['labTotal'] as int;
-                        final labP = item['labPresent'] as int;
-                        final lecPct = _pct(lecP, lecT);
-                        final labPct = _pct(labP, labT);
-                        final lecLow = lecT > 0 && lecPct < 75;
-                        final labLow = labT > 0 && labPct < 75;
-
-                        return Card(
-                          margin: const EdgeInsets.only(bottom: 12),
-                          child: Padding(
-                            padding: const EdgeInsets.all(16.0),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  item['name'] as String,
-                                  style: theme.textTheme.titleMedium?.copyWith(
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                ),
-                                const SizedBox(height: 12),
-                                _attendanceRow(
-                                  theme,
-                                  label: 'Lectures',
-                                  icon: Icons.menu_book_outlined,
-                                  present: lecP,
-                                  total: lecT,
-                                  pct: lecPct,
-                                  isLow: lecLow,
-                                  color: theme.colorScheme.primary,
-                                ),
-                                const SizedBox(height: 12),
-                                _attendanceRow(
-                                  theme,
-                                  label: 'Labs',
-                                  icon: Icons.science_outlined,
-                                  present: labP,
-                                  total: labT,
-                                  pct: labPct,
-                                  isLow: labLow,
-                                  color: theme.colorScheme.tertiary,
-                                ),
-                              ],
-                            ),
-                          ),
-                        );
-                      }),
-                    const SizedBox(height: 24),
-                    Text(
-                      'Weekly timetable',
-                      style: theme.textTheme.titleLarge?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    if (_schedule.isEmpty)
-                      Text(
-                        'No schedule for your division yet.',
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          color: theme.colorScheme.outline,
-                        ),
-                      )
-                    else
-                      ..._schedule.map((item) {
-                        final isLab = item['type'] == 'lab';
-                        return Card(
-                          margin: const EdgeInsets.only(bottom: 12),
-                          child: ListTile(
-                            leading: CircleAvatar(
-                              backgroundColor: isLab
-                                  ? theme.colorScheme.tertiaryContainer
-                                  : theme.colorScheme.primaryContainer,
-                              child: Icon(
-                                isLab ? Icons.science : Icons.menu_book,
-                                color: isLab
-                                    ? theme.colorScheme.onTertiaryContainer
-                                    : theme.colorScheme.onPrimaryContainer,
-                              ),
-                            ),
-                            title: Text(item['subject'] as String),
-                            subtitle: Text(
-                              '${item['day']} • ${item['time']}',
-                            ),
-                            trailing: Chip(
-                              label: Text(isLab ? 'Lab' : 'Lecture'),
-                            ),
-                          ),
-                        );
-                      }),
-                    const SizedBox(height: 80),
-                  ],
-                ),
-              ),
+              child: IndexedStack(index: _tabIndex, children: pages),
             ),
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: _tabIndex,
+        onDestinationSelected: (i) => setState(() => _tabIndex = i),
+        destinations: const [
+          NavigationDestination(icon: Icon(Icons.analytics_outlined), label: 'Attendance'),
+          NavigationDestination(icon: Icon(Icons.calendar_today_outlined), label: 'Timetable'),
+          NavigationDestination(icon: Icon(Icons.person_outline), label: 'Profile'),
+        ],
+      ),
     );
   }
+
+  Widget _timetableSection(ThemeData theme) {
+    final next = _nextClass();
+    return ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.all(16),
+      children: [
+        Text('Next class', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+        const SizedBox(height: 8),
+        if (next == null)
+          _emptyCard('No upcoming class found.')
+        else
+          ScheduleCard(
+            title: next['subject'] as String,
+            time: next['time']?.toString() ?? '',
+            subtitle: '${next['day']} • ${next['type'] == 'lab' ? 'Lab' : 'Lecture'}',
+            isLab: next['type'] == 'lab',
+          ),
+        const SizedBox(height: 12),
+        Text('Weekly timetable', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+        const SizedBox(height: 8),
+        if (_schedule.isEmpty)
+          _emptyCard('No schedule for your division yet.')
+        else
+          Card(
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: DataTable(
+                columnSpacing: 18,
+                columns: const [
+                  DataColumn(label: Text('Day')),
+                  DataColumn(label: Text('Time')),
+                  DataColumn(label: Text('Subject')),
+                  DataColumn(label: Text('Type')),
+                ],
+                rows: _schedule.map((item) {
+                  final isLab = item['type'] == 'lab';
+                  return DataRow(cells: [
+                    DataCell(Text(item['day']?.toString() ?? '')),
+                    DataCell(Text(item['time']?.toString() ?? '')),
+                    DataCell(Text(item['subject']?.toString() ?? '')),
+                    DataCell(
+                      Text(
+                        isLab ? 'Lab' : 'Lecture',
+                        style: TextStyle(
+                          color: isLab ? theme.colorScheme.tertiary : theme.colorScheme.primary,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ]);
+                }).toList(),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _attendanceSection(ThemeData theme) {
+    return ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.all(16),
+      children: [
+        Text(
+          'Attendance details',
+          style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          'Lecture and lab are tracked separately per subject.',
+          style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.outline),
+        ),
+        const SizedBox(height: 12),
+        if (_attendanceRows.isEmpty) _emptyCard('No sessions recorded yet for your division.'),
+        ..._attendanceRows.map((item) {
+          final lecT = item['lectureTotal'] as int;
+          final lecP = item['lecturePresent'] as int;
+          final labT = item['labTotal'] as int;
+          final labP = item['labPresent'] as int;
+          final lecPct = _pct(lecP, lecT);
+          final labPct = _pct(labP, labT);
+          final lecLow = lecT > 0 && lecPct < 75;
+          final labLow = labT > 0 && labPct < 75;
+          return Card(
+            margin: const EdgeInsets.only(bottom: 12),
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(item['name'] as String, style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 12),
+                  _attendanceRow(theme, label: 'Lectures', icon: Icons.menu_book_outlined, present: lecP, total: lecT, pct: lecPct, isLow: lecLow, color: theme.colorScheme.primary),
+                  const SizedBox(height: 12),
+                  _attendanceRow(theme, label: 'Labs', icon: Icons.science_outlined, present: labP, total: labT, pct: labPct, isLow: labLow, color: theme.colorScheme.tertiary),
+                ],
+              ),
+            ),
+          );
+        }),
+        const SizedBox(height: 80),
+      ],
+    );
+  }
+
+  Widget _profileSection(ThemeData theme) {
+    return ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.all(16),
+      children: [
+        Card(
+          child: ListTile(
+            leading: CircleAvatar(
+              child: Text((widget.userData['name']?.toString().isNotEmpty ?? false)
+                  ? widget.userData['name'].toString()[0].toUpperCase()
+                  : 'S'),
+            ),
+            title: Text(widget.userData['name']?.toString() ?? 'Student'),
+            subtitle: Text(widget.userData['email']?.toString() ?? ''),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Card(
+          child: ListTile(
+            leading: const Icon(Icons.groups_outlined),
+            title: const Text('Division'),
+            subtitle: Text(widget.userData['division']?.toString() ?? '-'),
+          ),
+        ),
+        const SizedBox(height: 12),
+        Card(
+          child: ListTile(
+            leading: const Icon(Icons.logout),
+            title: const Text('Logout'),
+            onTap: () async {
+              await AuthService().signOut();
+              if (!context.mounted) return;
+              Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(builder: (_) => const LoginScreen()),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _emptyCard(String msg) => Card(
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Text(msg),
+        ),
+      );
 
   Widget _attendanceRow(
     ThemeData theme, {
@@ -377,3 +473,4 @@ class _StudentDashboardState extends State<StudentDashboard> {
     );
   }
 }
+
