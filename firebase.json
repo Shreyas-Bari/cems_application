@@ -1,1 +1,39 @@
-{"flutter":{"platforms":{"android":{"default":{"projectId":"cems-application","appId":"1:375450566619:android:8c62cc78672f5b46e231fe","fileOutput":"android/app/google-services.json"}},"dart":{"lib/firebase_options.dart":{"projectId":"cems-application","configurations":{"android":"1:375450566619:android:8c62cc78672f5b46e231fe","ios":"1:375450566619:ios:dc1ba2a8fb4c5bc9e231fe","macos":"1:375450566619:ios:dc1ba2a8fb4c5bc9e231fe","web":"1:375450566619:web:3373186687fb0359e231fe","windows":"1:375450566619:web:d2b1c270ff3fbf4ee231fe"}}}}}}
+{
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "cems-application",
+          "appId": "1:375450566619:android:8c62cc78672f5b46e231fe",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "cems-application",
+          "configurations": {
+            "android": "1:375450566619:android:8c62cc78672f5b46e231fe",
+            "ios": "1:375450566619:ios:dc1ba2a8fb4c5bc9e231fe",
+            "macos": "1:375450566619:ios:dc1ba2a8fb4c5bc9e231fe",
+            "web": "1:375450566619:web:3373186687fb0359e231fe",
+            "windows": "1:375450566619:web:d2b1c270ff3fbf4ee231fe"
+          }
+        }
+      }
+    }
+  },
+  "hosting": {
+    "public": "build/web",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
+    "rewrites": [
+      {
+        "source": "**",
+        "destination": "/index.html"
+      }
+    ]
+  }
+}
