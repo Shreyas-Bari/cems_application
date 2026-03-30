@@ -26,6 +26,15 @@ class _StudentDashboardState extends State<StudentDashboard> {
     _fetchData();
   }
 
+  String _baseSubjectName(String name) {
+    final n = name.trim();
+    final lower = n.toLowerCase();
+    if (lower.endsWith(' lab')) {
+      return n.substring(0, n.length - 4).trim();
+    }
+    return n;
+  }
+
   Future<void> _fetchData() async {
     await Future.wait([
       _fetchSchedule(),
@@ -73,7 +82,6 @@ class _StudentDashboardState extends State<StudentDashboard> {
     _schedule = scheduleList;
   }
 
-  /// Per subject: lecture vs lab totals and presence counts.
   Future<void> _fetchAttendance() async {
     final studentId = widget.userData['uid'];
     final division = widget.userData['division'];
@@ -93,21 +101,22 @@ class _StudentDashboardState extends State<StudentDashboard> {
       final sessionType =
           _isFirestoreLab(sessionData['type']) ? 'lab' : 'lecture';
 
-      if (!bySubject.containsKey(subjectId)) {
-        final subjectDoc =
-            await _db.collection('subjects').doc(subjectId).get();
-        final subjectName = subjectDoc.exists
-            ? subjectDoc.data()!['name']?.toString() ?? 'Unknown Subject'
-            : 'Unknown Subject';
+      final subjectDoc =
+          await _db.collection('subjects').doc(subjectId).get();
+      final rawName = subjectDoc.exists
+          ? subjectDoc.data()!['name']?.toString() ?? 'Unknown Subject'
+          : 'Unknown Subject';
+      final subjectName = _baseSubjectName(rawName);
 
-        bySubject[subjectId] = {
+      if (!bySubject.containsKey(subjectName)) {
+        bySubject[subjectName] = {
           'name': subjectName,
           'lecture': {'total': 0, 'present': 0},
           'lab': {'total': 0, 'present': 0},
         };
       }
 
-      final bucket = bySubject[subjectId]![sessionType] as Map<String, int>;
+      final bucket = bySubject[subjectName]![sessionType] as Map<String, int>;
       bucket['total'] = (bucket['total'] ?? 0) + 1;
 
       final attendanceSnap = await _db
@@ -156,12 +165,12 @@ class _StudentDashboardState extends State<StudentDashboard> {
     return raw;
   }
 
-  /// Same clock parsing as the weekly table columns (first time in the string).
   ({int hour24, int minute})? _parseScheduleTimeStart(String time) {
     final t = time.toLowerCase().replaceAll('.', ':');
     int? startHour24;
     var minute = 0;
-    final matchAmPm = RegExp(r'(\d{1,2})(?::(\d{2}))?\s*(am|pm)').firstMatch(t);
+    final matchAmPm =
+        RegExp(r'(\d{1,2})(?::(\d{2}))?\s*(am|pm)').firstMatch(t);
     if (matchAmPm != null) {
       var hour = int.parse(matchAmPm.group(1)!);
       minute = int.parse(matchAmPm.group(2) ?? '0');
@@ -184,7 +193,6 @@ class _StudentDashboardState extends State<StudentDashboard> {
     final parsed = _parseScheduleTimeStart(time);
     if (parsed == null) return '';
     final h = parsed.hour24;
-    // Morning block (before noon) → first column; afternoon → second.
     if (h >= 8 && h < 12) return '10-12';
     if (h >= 12 && h < 14) return '12-2';
     return '';
@@ -290,9 +298,12 @@ class _StudentDashboardState extends State<StudentDashboard> {
         selectedIndex: _tabIndex,
         onDestinationSelected: (i) => setState(() => _tabIndex = i),
         destinations: const [
-          NavigationDestination(icon: Icon(Icons.analytics_outlined), label: 'Attendance'),
-          NavigationDestination(icon: Icon(Icons.calendar_today_outlined), label: 'Timetable'),
-          NavigationDestination(icon: Icon(Icons.person_outline), label: 'Profile'),
+          NavigationDestination(
+              icon: Icon(Icons.analytics_outlined), label: 'Attendance'),
+          NavigationDestination(
+              icon: Icon(Icons.calendar_today_outlined), label: 'Timetable'),
+          NavigationDestination(
+              icon: Icon(Icons.person_outline), label: 'Profile'),
         ],
       ),
     );
@@ -300,7 +311,10 @@ class _StudentDashboardState extends State<StudentDashboard> {
 
   Widget _timetableSection(ThemeData theme) {
     final next = _nextClass();
-    const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const days = [
+      'Monday', 'Tuesday', 'Wednesday',
+      'Thursday', 'Friday', 'Saturday'
+    ];
 
     final table = <String, Map<String, String>>{};
     for (final d in days) {
@@ -324,7 +338,9 @@ class _StudentDashboardState extends State<StudentDashboard> {
       physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.all(16),
       children: [
-        Text('Next class', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+        Text('Next class',
+            style: theme.textTheme.titleMedium
+                ?.copyWith(fontWeight: FontWeight.w700)),
         const SizedBox(height: 8),
         if (next == null)
           _emptyCard('No upcoming class found.')
@@ -342,7 +358,9 @@ class _StudentDashboardState extends State<StudentDashboard> {
             isLab: _isFirestoreLab(next['type']),
           ),
         const SizedBox(height: 12),
-        Text('Weekly timetable', style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+        Text('Weekly timetable',
+            style: theme.textTheme.titleMedium
+                ?.copyWith(fontWeight: FontWeight.w700)),
         const SizedBox(height: 8),
         if (_schedule.isEmpty)
           _emptyCard('No schedule for your division yet.')
@@ -378,15 +396,18 @@ class _StudentDashboardState extends State<StudentDashboard> {
       children: [
         Text(
           'Attendance details',
-          style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+          style: theme.textTheme.titleMedium
+              ?.copyWith(fontWeight: FontWeight.w700),
         ),
         const SizedBox(height: 4),
         Text(
           'Lecture and lab are tracked separately per subject.',
-          style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.outline),
+          style: theme.textTheme.bodySmall
+              ?.copyWith(color: theme.colorScheme.outline),
         ),
         const SizedBox(height: 12),
-        if (_attendanceRows.isEmpty) _emptyCard('No sessions recorded yet for your division.'),
+        if (_attendanceRows.isEmpty)
+          _emptyCard('No sessions recorded yet for your division.'),
         ..._attendanceRows.map((item) {
           final lecT = item['lectureTotal'] as int;
           final lecP = item['lecturePresent'] as int;
@@ -403,11 +424,33 @@ class _StudentDashboardState extends State<StudentDashboard> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(item['name'] as String, style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+                  Text(
+                    item['name'] as String,
+                    style: theme.textTheme.titleMedium
+                        ?.copyWith(fontWeight: FontWeight.bold),
+                  ),
                   const SizedBox(height: 12),
-                  _attendanceRow(theme, label: 'Lectures', icon: Icons.menu_book_outlined, present: lecP, total: lecT, pct: lecPct, isLow: lecLow, color: theme.colorScheme.primary),
+                  _attendanceRow(
+                    theme,
+                    label: 'Lectures',
+                    icon: Icons.menu_book_outlined,
+                    present: lecP,
+                    total: lecT,
+                    pct: lecPct,
+                    isLow: lecLow,
+                    color: theme.colorScheme.primary,
+                  ),
                   const SizedBox(height: 12),
-                  _attendanceRow(theme, label: 'Labs', icon: Icons.science_outlined, present: labP, total: labT, pct: labPct, isLow: labLow, color: theme.colorScheme.tertiary),
+                  _attendanceRow(
+                    theme,
+                    label: 'Labs',
+                    icon: Icons.science_outlined,
+                    present: labP,
+                    total: labT,
+                    pct: labPct,
+                    isLow: labLow,
+                    color: theme.colorScheme.tertiary,
+                  ),
                 ],
               ),
             ),
@@ -440,16 +483,14 @@ class _StudentDashboardState extends State<StudentDashboard> {
                 const SizedBox(height: 12),
                 Text(
                   widget.userData['name']?.toString() ?? 'Student',
-                  style: theme.textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
+                  style: theme.textTheme.titleLarge
+                      ?.copyWith(fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 4),
                 Text(
                   widget.userData['email']?.toString() ?? '',
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: theme.colorScheme.outline,
-                  ),
+                  style: theme.textTheme.bodyMedium
+                      ?.copyWith(color: theme.colorScheme.outline),
                 ),
                 const SizedBox(height: 12),
                 Row(
@@ -477,7 +518,8 @@ class _StudentDashboardState extends State<StudentDashboard> {
           child: ListTile(
             leading: const Icon(Icons.groups_outlined),
             title: const Text('Division'),
-            subtitle: Text(widget.userData['division']?.toString() ?? '-'),
+            subtitle:
+                Text(widget.userData['division']?.toString() ?? '-'),
           ),
         ),
         const SizedBox(height: 12),
@@ -525,9 +567,8 @@ class _StudentDashboardState extends State<StudentDashboard> {
             const SizedBox(width: 8),
             Text(
               label,
-              style: theme.textTheme.titleSmall?.copyWith(
-                fontWeight: FontWeight.w600,
-              ),
+              style: theme.textTheme.titleSmall
+                  ?.copyWith(fontWeight: FontWeight.w600),
             ),
             const Spacer(),
             Text(
@@ -549,9 +590,8 @@ class _StudentDashboardState extends State<StudentDashboard> {
         const SizedBox(height: 4),
         Text(
           '$present / $total sessions',
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: theme.colorScheme.outline,
-          ),
+          style: theme.textTheme.bodySmall
+              ?.copyWith(color: theme.colorScheme.outline),
         ),
         if (isLow)
           Padding(
@@ -569,4 +609,3 @@ class _StudentDashboardState extends State<StudentDashboard> {
     );
   }
 }
-
