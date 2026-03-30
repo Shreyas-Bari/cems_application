@@ -422,7 +422,7 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
                           final labT = s['labTotal'] as int;
                           final lecPct = s['lecturePct'] as double;
                           final labPct = s['labPct'] as double;
-                          final overallPct = (lecPct + labPct) / 2;
+                          final overallPct = ((lecP + labP) / (lecT + labT))*100;
                           final color = _attendanceColor(overallPct, theme);
 
                           return ListTile(
@@ -571,31 +571,66 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
   }
 
   Widget _timetableSection(ThemeData theme) {
-    return ListView(
-      physics: const AlwaysScrollableScrollPhysics(),
-      padding: const EdgeInsets.all(16.0),
-      children: [
-        if (_schedule.isEmpty)
-          Text(
-            'No schedule entries. Ask admin to add your subjects.',
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: theme.colorScheme.outline,
-            ),
-          )
-        else
-          ..._schedule.map((item) {
-            final isLab = item['type'] == 'lab';
-            return ScheduleCard(
-              title: item['subject'] as String,
-              time: item['time']?.toString() ?? '',
-              subtitle:
-                  '${item['day']} • Div ${item['division']} • ${isLab ? 'Lab' : 'Lecture'}',
-              isLab: isLab,
-            );
-          }),
-      ],
-    );
+  const dayOrder = [
+    'Monday', 'Tuesday', 'Wednesday',
+    'Thursday', 'Friday', 'Saturday'
+  ];
+
+  // Group schedule by day
+  final Map<String, List<Map<String, dynamic>>> grouped = {};
+  for (final item in _schedule) {
+    final day = item['day'] as String;
+    grouped.putIfAbsent(day, () => []).add(item);
   }
+
+  // Sort days by dayOrder
+  final sortedDays = grouped.keys.toList()
+    ..sort((a, b) => dayOrder.indexOf(a) - dayOrder.indexOf(b));
+
+  return ListView(
+    physics: const AlwaysScrollableScrollPhysics(),
+    padding: const EdgeInsets.all(16.0),
+    children: [
+      if (_schedule.isEmpty)
+        Text(
+          'No schedule entries. Ask admin to add your subjects.',
+          style: theme.textTheme.bodyMedium?.copyWith(
+            color: theme.colorScheme.outline,
+          ),
+        )
+      else
+        ...sortedDays.expand((day) {
+          final items = grouped[day]!;
+          return [
+            // Day header
+            Padding(
+              padding: const EdgeInsets.only(top: 12, bottom: 6),
+              child: Text(
+                day,
+                style: theme.textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.bold,
+                  color: theme.colorScheme.primary,
+                ),
+              ),
+            ),
+            // Tiles for that day
+            ...items.map((item) {
+              final isLab = item['type'] == 'lab';
+              return ScheduleCard(
+                title: isLab
+                    ? '${item['subject']} Lab'
+                    : item['subject'] as String,
+                time: item['time']?.toString() ?? '',
+                subtitle:
+                    'Div ${item['division']} • ${isLab ? 'Lab' : 'Lecture'}',
+                isLab: isLab,
+              );
+            }),
+          ];
+        }),
+    ],
+  );
+}
 
   Widget _profileSection(ThemeData theme) {
     return ListView(
