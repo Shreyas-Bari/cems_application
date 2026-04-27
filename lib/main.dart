@@ -8,6 +8,7 @@ import 'screens/login_screen.dart';
 import 'screens/student/student_dashboard.dart';
 import 'screens/teacher/teacher_dashboard.dart';
 import 'theme/app_theme.dart';
+import 'services/theme_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -22,50 +23,55 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'CEMS',
-      debugShowCheckedModeBanner: false,
-      theme: AppTheme.light(),
-      home: StreamBuilder<User?>(
-        stream: FirebaseAuth.instance.authStateChanges(),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return Scaffold(
-              body: Center(child: CircularProgressIndicator()),
-            );
-          }
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: ThemeService.themeMode,
+      builder: (context, mode, _) => MaterialApp(
+        title: 'CEMS',
+        debugShowCheckedModeBanner: false,
+        theme: AppTheme.light(),
+        darkTheme: AppTheme.dark(),
+        themeMode: mode,
+        home: StreamBuilder<User?>(
+          stream: FirebaseAuth.instance.authStateChanges(),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Scaffold(
+                body: Center(child: CircularProgressIndicator()),
+              );
+            }
 
-          if (snapshot.hasData) {
-            return FutureBuilder<DocumentSnapshot>(
-              future: FirebaseFirestore.instance
-                  .collection('users')
-                  .doc(snapshot.data!.uid)
-                  .get(),
-              builder: (context, userSnap) {
-                if (!userSnap.hasData) {
-                  return Scaffold(
-                    body: Center(child: CircularProgressIndicator()),
-                  );
-                }
+            if (snapshot.hasData) {
+              return FutureBuilder<DocumentSnapshot>(
+                future: FirebaseFirestore.instance
+                    .collection('users')
+                    .doc(snapshot.data!.uid)
+                    .get(),
+                builder: (context, userSnap) {
+                  if (!userSnap.hasData) {
+                    return const Scaffold(
+                      body: Center(child: CircularProgressIndicator()),
+                    );
+                  }
 
-                final userData =
-                    userSnap.data!.data() as Map<String, dynamic>;
-                userData['uid'] = snapshot.data!.uid;
+                  final userData =
+                      userSnap.data!.data() as Map<String, dynamic>;
+                  userData['uid'] = snapshot.data!.uid;
 
-                final role = userData['role']?.toString();
-                if (role == 'student') {
-                  return StudentDashboard(userData: userData);
-                }
-                if (role == 'admin') {
-                  return AdminDashboard(userData: userData);
-                }
-                return TeacherDashboard(userData: userData);
-              },
-            );
-          }
+                  final role = userData['role']?.toString();
+                  if (role == 'student') {
+                    return StudentDashboard(userData: userData);
+                  }
+                  if (role == 'admin') {
+                    return AdminDashboard(userData: userData);
+                  }
+                  return TeacherDashboard(userData: userData);
+                },
+              );
+            }
 
-          return const LoginScreen();
-        },
+            return const LoginScreen();
+          },
+        ),
       ),
     );
   }

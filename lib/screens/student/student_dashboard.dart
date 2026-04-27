@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'scan_attendance_screen.dart';
 import '../../services/auth_services.dart';
+import '../../services/theme_service.dart';
 import '../login_screen.dart';
 import '../../widgets/schedule_card.dart';
 import '../../widgets/ui_blocks.dart';
@@ -54,15 +55,33 @@ class _StudentDashboardState extends State<StudentDashboard> {
         .where('division', isEqualTo: division)
         .get();
 
+    // Batch-fetch all unique subject names in one pass instead of N reads.
+    final subjectIds = <String>{};
+    for (var doc in scheduleSnap.docs) {
+      final sid = doc.data()['subjectId']?.toString();
+      if (sid != null && sid.isNotEmpty) subjectIds.add(sid);
+    }
+
+    final subjectNameMap = <String, String>{};
+    // Firestore 'whereIn' supports up to 30 items per batch.
+    final idList = subjectIds.toList();
+    for (var i = 0; i < idList.length; i += 30) {
+      final batch = idList.sublist(i, i + 30 > idList.length ? idList.length : i + 30);
+      final snap = await _db
+          .collection('subjects')
+          .where(FieldPath.documentId, whereIn: batch)
+          .get();
+      for (final doc in snap.docs) {
+        subjectNameMap[doc.id] = doc.data()['name']?.toString() ?? 'Unknown Subject';
+      }
+    }
+
     List<Map<String, dynamic>> scheduleList = [];
 
     for (var doc in scheduleSnap.docs) {
       final data = doc.data();
-      final subjectDoc =
-          await _db.collection('subjects').doc(data['subjectId']).get();
-      final subjectName = subjectDoc.exists
-          ? subjectDoc.data()!['name']?.toString() ?? 'Unknown Subject'
-          : 'Unknown Subject';
+      final sid = data['subjectId']?.toString() ?? '';
+      final subjectName = subjectNameMap[sid] ?? 'Unknown Subject';
 
       scheduleList.add({
         'subject': subjectName,
@@ -87,26 +106,56 @@ class _StudentDashboardState extends State<StudentDashboard> {
     final studentId = widget.userData['uid'];
     final division = widget.userData['division'];
 
-    final sessionsSnap = await _db
-        .collection('sessions')
-        .where('division', isEqualTo: division)
-        .get();
+    // Fetch sessions and this student's attendance records in parallel.
+    final futures = await Future.wait([
+      _db.collection('sessions').where('division', isEqualTo: division).get(),
+      _db.collection('attendance').where('studentId', isEqualTo: studentId).where('status', isEqualTo: true).get(),
+    ]);
+    final sessionsSnap = futures[0] as QuerySnapshot;
+    final attendanceSnap = futures[1] as QuerySnapshot;
+
+    // Build a set of sessionIds this student attended.
+    final attendedSessionIds = <String>{};
+    for (final doc in attendanceSnap.docs) {
+      final sid = doc.data() is Map<String, dynamic>
+          ? (doc.data() as Map<String, dynamic>)['sessionId']?.toString()
+          : null;
+      if (sid != null) attendedSessionIds.add(sid);
+    }
+
+    // Collect unique subject IDs to batch-fetch names.
+    final subjectIds = <String>{};
+    for (var sessionDoc in sessionsSnap.docs) {
+      final sid = sessionDoc.data() is Map<String, dynamic>
+          ? (sessionDoc.data() as Map<String, dynamic>)['subjectId']?.toString()
+          : null;
+      if (sid != null && sid.isNotEmpty) subjectIds.add(sid);
+    }
+
+    final subjectNameMap = <String, String>{};
+    final idList = subjectIds.toList();
+    for (var i = 0; i < idList.length; i += 30) {
+      final batch = idList.sublist(i, i + 30 > idList.length ? idList.length : i + 30);
+      final snap = await _db
+          .collection('subjects')
+          .where(FieldPath.documentId, whereIn: batch)
+          .get();
+      for (final doc in snap.docs) {
+        subjectNameMap[doc.id] = doc.data()['name']?.toString() ?? 'Unknown Subject';
+      }
+    }
 
     final Map<String, Map<String, dynamic>> bySubject = {};
 
     for (var sessionDoc in sessionsSnap.docs) {
-      final sessionData = sessionDoc.data();
+      final sessionData = sessionDoc.data() as Map<String, dynamic>;
       final subjectId = sessionData['subjectId']?.toString();
       if (subjectId == null || subjectId.isEmpty) continue;
 
       final sessionType =
           _isFirestoreLab(sessionData['type']) ? 'lab' : 'lecture';
 
-      final subjectDoc =
-          await _db.collection('subjects').doc(subjectId).get();
-      final rawName = subjectDoc.exists
-          ? subjectDoc.data()!['name']?.toString() ?? 'Unknown Subject'
-          : 'Unknown Subject';
+      final rawName = subjectNameMap[subjectId] ?? 'Unknown Subject';
       final subjectName = _baseSubjectName(rawName);
 
       if (!bySubject.containsKey(subjectName)) {
@@ -120,14 +169,8 @@ class _StudentDashboardState extends State<StudentDashboard> {
       final bucket = bySubject[subjectName]![sessionType] as Map<String, int>;
       bucket['total'] = (bucket['total'] ?? 0) + 1;
 
-      final attendanceSnap = await _db
-          .collection('attendance')
-          .where('sessionId', isEqualTo: sessionDoc.id)
-          .where('studentId', isEqualTo: studentId)
-          .where('status', isEqualTo: true)
-          .get();
-
-      if (attendanceSnap.docs.isNotEmpty) {
+      // Check attendance from the pre-fetched set instead of per-session query.
+      if (attendedSessionIds.contains(sessionDoc.id)) {
         bucket['present'] = (bucket['present'] ?? 0) + 1;
       }
     }
@@ -575,6 +618,25 @@ class _StudentDashboardState extends State<StudentDashboard> {
             title: const Text('Division'),
             subtitle:
                 Text(widget.userData['division']?.toString() ?? '-'),
+          ),
+        ),
+        const SizedBox(height: 12),
+        Card(
+          child: ValueListenableBuilder<ThemeMode>(
+            valueListenable: ThemeService.themeMode,
+            builder: (_, mode, __) => SwitchListTile(
+              secondary: Icon(
+                mode == ThemeMode.dark
+                    ? Icons.dark_mode_outlined
+                    : Icons.light_mode_outlined,
+              ),
+              title: const Text('Theme'),
+              subtitle: Text(
+                mode == ThemeMode.dark ? 'Dark mode' : 'Light mode',
+              ),
+              value: mode == ThemeMode.dark,
+              onChanged: ThemeService.setDark,
+            ),
           ),
         ),
         const SizedBox(height: 12),

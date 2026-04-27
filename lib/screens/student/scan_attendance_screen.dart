@@ -24,6 +24,22 @@ class _ScanAttendanceScreenState extends State<ScanAttendanceScreen> {
   bool _done = false;
   String _message = '';
   bool _success = false;
+  Position? _cachedPosition;
+
+  @override
+  void initState() {
+    super.initState();
+    // Pre-fetch location as soon as the scan screen opens so it's ready
+    // by the time a QR code is scanned — eliminates 3-10s post-scan delay.
+    _prefetchLocation();
+  }
+
+  Future<void> _prefetchLocation() async {
+    final pos = await _getStudentPosition();
+    if (mounted) {
+      setState(() => _cachedPosition = pos);
+    }
+  }
 
   Future<Position?> _getStudentPosition() async {
     final serviceEnabled = await Geolocator.isLocationServiceEnabled();
@@ -39,7 +55,7 @@ class _ScanAttendanceScreenState extends State<ScanAttendanceScreen> {
     }
 
     return Geolocator.getCurrentPosition(
-      desiredAccuracy: LocationAccuracy.high,
+      desiredAccuracy: LocationAccuracy.medium,
     );
   }
 
@@ -92,7 +108,8 @@ class _ScanAttendanceScreenState extends State<ScanAttendanceScreen> {
     double? studentLng;
 
     if (lat != null && lng != null) {
-      final studentPos = await _getStudentPosition();
+      // Use the pre-fetched position if available, otherwise fetch now.
+      final studentPos = _cachedPosition ?? await _getStudentPosition();
       if (studentPos == null) {
         setState(() {
           _isProcessing = false;
