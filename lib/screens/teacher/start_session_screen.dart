@@ -137,26 +137,33 @@ class _StartSessionScreenState extends State<StartSessionScreen> {
 
   Future<void> _startSession() async {
     if (!_isValidSetup) return;
+    setState(() => _isAcquiringLocation = true);
 
-    // Location tracking was started in initState, so the GPS should
-    // already have a fix by now. If not, show a brief wait.
-    if (!_locationReady) {
-      setState(() => _isAcquiringLocation = true);
-      // Short wait — GPS has been warming up since screen opened.
-      for (var i = 0; i < 6; i++) {
-        if (_locationReady) break;
-        await Future.delayed(const Duration(milliseconds: 500));
-      }
-      if (!mounted) return;
-      if (_teacherPosition == null) {
-        setState(() => _isAcquiringLocation = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not get current location. Try again.')),
-        );
+    // If location tracking failed during initState (e.g. permission wasn't
+    // granted yet), retry it now.
+    if (_locationSubscription == null) {
+      final locationOk = await _startLocationTracking();
+      if (!locationOk) {
+        if (mounted) setState(() => _isAcquiringLocation = false);
         return;
       }
-      setState(() => _isAcquiringLocation = false);
     }
+
+    // Wait for GPS to deliver a position (up to 10 seconds).
+    for (var i = 0; i < 20; i++) {
+      if (_locationReady) break;
+      await Future.delayed(const Duration(milliseconds: 500));
+    }
+
+    if (!mounted) return;
+    if (_teacherPosition == null) {
+      setState(() => _isAcquiringLocation = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not get current location. Try again.')),
+      );
+      return;
+    }
+    setState(() => _isAcquiringLocation = false);
     final token = _generateToken();
     final now = DateTime.now();
 
