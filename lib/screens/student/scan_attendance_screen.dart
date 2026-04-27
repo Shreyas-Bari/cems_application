@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:geolocator/geolocator.dart';
+import '../../widgets/ui_blocks.dart';
 
 class ScanAttendanceScreen extends StatefulWidget {
   final String studentId;
@@ -22,6 +24,24 @@ class _ScanAttendanceScreenState extends State<ScanAttendanceScreen> {
   bool _done = false;
   String _message = '';
   bool _success = false;
+
+  Future<Position?> _getStudentPosition() async {
+    final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) return null;
+
+    var permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+    }
+    if (permission == LocationPermission.denied ||
+        permission == LocationPermission.deniedForever) {
+      return null;
+    }
+
+    return Geolocator.getCurrentPosition(
+      desiredAccuracy: LocationAccuracy.high,
+    );
+  }
 
   Future<void> _handleScan(String scannedToken) async {
     if (_isProcessing || _done) return;
@@ -64,6 +84,41 @@ class _ScanAttendanceScreenState extends State<ScanAttendanceScreen> {
       return;
     }
 
+    final lat = (sessionData['latitude'] as num?)?.toDouble();
+    final lng = (sessionData['longitude'] as num?)?.toDouble();
+    final radius = (sessionData['radiusMetres'] as num?)?.toDouble() ?? 30;
+    double? distance;
+    double? studentLat;
+    double? studentLng;
+
+    if (lat != null && lng != null) {
+      final studentPos = await _getStudentPosition();
+      if (studentPos == null) {
+        setState(() {
+          _isProcessing = false;
+          _done = true;
+          _success = false;
+          _message =
+              'Location permission is required to mark attendance. Enable location and try again.';
+        });
+        return;
+      }
+
+      studentLat = studentPos.latitude;
+      studentLng = studentPos.longitude;
+      distance = Geolocator.distanceBetween(lat, lng, studentLat, studentLng);
+      if (distance != null && distance > radius) {
+        setState(() {
+          _isProcessing = false;
+          _done = true;
+          _success = false;
+          _message =
+              'You are outside allowed range.\nDistance: ${distance!.toStringAsFixed(0)} m • Limit: ${radius.toStringAsFixed(0)} m';
+        });
+        return;
+      }
+    }
+
     // Check if student already marked attendance for this session
     final existingSnap = await _db
         .collection('attendance')
@@ -91,6 +146,9 @@ class _ScanAttendanceScreenState extends State<ScanAttendanceScreen> {
       'sessionType': sessionType,
       'status': true,
       'markedAt': Timestamp.now(),
+      if (studentLat != null) 'studentLatitude': studentLat,
+      if (studentLng != null) 'studentLongitude': studentLng,
+      if (distance != null) 'distanceMeters': distance,
     });
 
     setState(() {
@@ -114,24 +172,21 @@ class _ScanAttendanceScreenState extends State<ScanAttendanceScreen> {
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(
-                      _success ? Icons.check_circle : Icons.error,
-                      color: _success ? Colors.green : Colors.red,
-                      size: 80,
+                    EmptyStateCard(
+                      icon:
+                          _success ? Icons.check_circle_outline : Icons.error_outline,
+                      message: _message,
+                      hint: _success
+                          ? 'You can return to dashboard now.'
+                          : 'Please ask your teacher to refresh the QR.',
                     ),
-                    SizedBox(height: 24),
-                    Text(
-                      _message,
-                      textAlign: TextAlign.center,
-                      style: TextStyle(fontSize: 18),
-                    ),
-                    SizedBox(height: 32),
-                    ElevatedButton(
+                    const SizedBox(height: 16),
+                    FilledButton(
                       onPressed: () => Navigator.pop(context),
-                      style: ElevatedButton.styleFrom(
-                        minimumSize: Size(double.infinity, 50),
+                      style: FilledButton.styleFrom(
+                        minimumSize: const Size(double.infinity, 50),
                       ),
-                      child: Text('Go Back'),
+                      child: const Text('Go Back'),
                     ),
                   ],
                 ),
@@ -150,8 +205,18 @@ class _ScanAttendanceScreenState extends State<ScanAttendanceScreen> {
                 if (_isProcessing)
                   Container(
                     color: Colors.black54,
-                    child: Center(
-                      child: CircularProgressIndicator(color: Colors.white),
+                    child: const Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          CircularProgressIndicator(color: Colors.white),
+                          SizedBox(height: 12),
+                          Text(
+                            'Verifying QR and location...',
+                            style: TextStyle(color: Colors.white),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 Positioned(

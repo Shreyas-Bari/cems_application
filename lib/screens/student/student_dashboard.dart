@@ -4,6 +4,7 @@ import 'scan_attendance_screen.dart';
 import '../../services/auth_services.dart';
 import '../login_screen.dart';
 import '../../widgets/schedule_card.dart';
+import '../../widgets/ui_blocks.dart';
 
 class StudentDashboard extends StatefulWidget {
   final Map<String, dynamic> userData;
@@ -338,12 +339,17 @@ class _StudentDashboardState extends State<StudentDashboard> {
       physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.all(16),
       children: [
-        Text('Next class',
-            style: theme.textTheme.titleMedium
-                ?.copyWith(fontWeight: FontWeight.w700)),
+        const AppSectionHeader(
+          title: 'Next class',
+          subtitle: 'Your upcoming lecture/lab from timetable',
+        ),
         const SizedBox(height: 8),
         if (next == null)
-          _emptyCard('No upcoming class found.')
+          const EmptyStateCard(
+            message: 'No upcoming class found.',
+            hint: 'Ask admin to add schedule entries for your division.',
+            icon: Icons.event_busy_outlined,
+          )
         else
           ScheduleCard(
             title: next['subject'] as String,
@@ -358,12 +364,17 @@ class _StudentDashboardState extends State<StudentDashboard> {
             isLab: _isFirestoreLab(next['type']),
           ),
         const SizedBox(height: 12),
-        Text('Weekly timetable',
-            style: theme.textTheme.titleMedium
-                ?.copyWith(fontWeight: FontWeight.w700)),
+        const AppSectionHeader(
+          title: 'Weekly timetable',
+          subtitle: 'Current class plan for your division',
+        ),
         const SizedBox(height: 8),
         if (_schedule.isEmpty)
-          _emptyCard('No schedule for your division yet.')
+          const EmptyStateCard(
+            message: 'No schedule for your division yet.',
+            hint: 'Admin needs to create timetable slots first.',
+            icon: Icons.calendar_month_outlined,
+          )
         else
           Card(
             child: SingleChildScrollView(
@@ -390,24 +401,68 @@ class _StudentDashboardState extends State<StudentDashboard> {
   }
 
   Widget _attendanceSection(ThemeData theme) {
+    final totalSessions = _attendanceRows.fold<int>(
+      0,
+      (sum, item) =>
+          sum +
+          (item['lectureTotal'] as int) +
+          (item['labTotal'] as int),
+    );
+    final totalPresent = _attendanceRows.fold<int>(
+      0,
+      (sum, item) =>
+          sum +
+          (item['lecturePresent'] as int) +
+          (item['labPresent'] as int),
+    );
+    final overallPct = _pct(totalPresent, totalSessions);
+    final lowSubjects = _attendanceRows.where((item) {
+      final lecT = item['lectureTotal'] as int;
+      final lecP = item['lecturePresent'] as int;
+      final labT = item['labTotal'] as int;
+      final labP = item['labPresent'] as int;
+      final combinedTotal = lecT + labT;
+      final combinedPresent = lecP + labP;
+      return combinedTotal > 0 && _pct(combinedPresent, combinedTotal) < 75;
+    }).length;
+
     return ListView(
       physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.all(16),
       children: [
-        Text(
-          'Attendance details',
-          style: theme.textTheme.titleMedium
-              ?.copyWith(fontWeight: FontWeight.w700),
+        const AppSectionHeader(
+          title: 'Attendance details',
+          subtitle: 'Lecture and lab are tracked separately per subject',
         ),
-        const SizedBox(height: 4),
-        Text(
-          'Lecture and lab are tracked separately per subject.',
-          style: theme.textTheme.bodySmall
-              ?.copyWith(color: theme.colorScheme.outline),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: QuickStatCard(
+                label: 'Overall',
+                value: '${overallPct.toStringAsFixed(1)}%',
+                icon: Icons.pie_chart_outline,
+                color: theme.colorScheme.primary,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: QuickStatCard(
+                label: 'Low subjects',
+                value: '$lowSubjects',
+                icon: Icons.warning_amber_outlined,
+                color: theme.colorScheme.error,
+              ),
+            ),
+          ],
         ),
         const SizedBox(height: 12),
         if (_attendanceRows.isEmpty)
-          _emptyCard('No sessions recorded yet for your division.'),
+          const EmptyStateCard(
+            message: 'No sessions recorded yet for your division.',
+            hint: 'You will see percentages after teachers start sessions.',
+            icon: Icons.assignment_outlined,
+          ),
         ..._attendanceRows.map((item) {
           final lecT = item['lectureTotal'] as int;
           final lecP = item['lecturePresent'] as int;

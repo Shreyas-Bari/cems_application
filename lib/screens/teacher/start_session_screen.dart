@@ -3,6 +3,8 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:qr_flutter/qr_flutter.dart';
+import 'package:geolocator/geolocator.dart';
+import '../../widgets/ui_blocks.dart';
 
 class StartSessionScreen extends StatefulWidget {
   final String teacherId;
@@ -34,6 +36,11 @@ class _StartSessionScreenState extends State<StartSessionScreen> {
   bool _isCheckingSetup = true;
   int _secondsLeft = 15;
   Timer? _countdownTimer;
+  StreamSubscription<Position>? _locationSubscription;
+  Position? _teacherPosition;
+  bool _locationReady = false;
+  bool _isAcquiringLocation = false;
+  double _radiusMetres = 30;
 
   @override
   void initState() {
@@ -72,8 +79,76 @@ class _StartSessionScreenState extends State<StartSessionScreen> {
     return List.generate(8, (_) => chars[rand.nextInt(chars.length)]).join();
   }
 
+  Future<bool> _startLocationTracking() async {
+    final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) {
+      if (!mounted) return false;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Enable location services to start session.')),
+      );
+      return false;
+    }
+
+    var permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+    }
+    if (permission == LocationPermission.denied ||
+        permission == LocationPermission.deniedForever) {
+      if (!mounted) return false;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Location permission is required.')),
+      );
+      return false;
+    }
+
+    _locationSubscription = Geolocator.getPositionStream(
+      locationSettings: const LocationSettings(
+        accuracy: LocationAccuracy.high,
+        distanceFilter: 5,
+      ),
+    ).listen((position) async {
+      if (!mounted) return;
+      setState(() {
+        _teacherPosition = position;
+        _locationReady = true;
+      });
+      if (_sessionId != null) {
+        await _db.collection('sessions').doc(_sessionId).update({
+          'latitude': position.latitude,
+          'longitude': position.longitude,
+        });
+      }
+    });
+
+    return true;
+  }
+
   Future<void> _startSession() async {
     if (!_isValidSetup) return;
+    setState(() => _isAcquiringLocation = true);
+
+    final locationOk = await _startLocationTracking();
+    if (!locationOk) {
+      if (mounted) setState(() => _isAcquiringLocation = false);
+      return;
+    }
+
+    for (var i = 0; i < 10; i++) {
+      if (_locationReady) break;
+      await Future.delayed(const Duration(milliseconds: 500));
+    }
+
+    if (!mounted) return;
+    if (_teacherPosition == null) {
+      setState(() => _isAcquiringLocation = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not get current location. Try again.')),
+      );
+      return;
+    }
+
+    setState(() => _isAcquiringLocation = false);
     final token = _generateToken();
     final now = DateTime.now();
 
@@ -86,9 +161,12 @@ class _StartSessionScreenState extends State<StartSessionScreen> {
       'batch': null,
       'qrToken': token,
       'tokenExpiry': Timestamp.fromDate(
-        now.add(Duration(seconds: 15)),
+        now.add(const Duration(seconds: 15)),
       ),
       'isActive': true,
+      'latitude': _teacherPosition!.latitude,
+      'longitude': _teacherPosition!.longitude,
+      'radiusMetres': _radiusMetres,
     });
 
     setState(() {
@@ -134,6 +212,7 @@ class _StartSessionScreenState extends State<StartSessionScreen> {
   Future<void> _endSession() async {
     _tokenRefreshTimer?.cancel();
     _countdownTimer?.cancel();
+    _locationSubscription?.cancel();
 
     if (_sessionId != null) {
       await _db.collection('sessions').doc(_sessionId).update({
@@ -149,6 +228,7 @@ class _StartSessionScreenState extends State<StartSessionScreen> {
   void dispose() {
     _tokenRefreshTimer?.cancel();
     _countdownTimer?.cancel();
+    _locationSubscription?.cancel();
     super.dispose();
   }
 
@@ -216,31 +296,96 @@ class _StartSessionScreenState extends State<StartSessionScreen> {
             ],
 
             if (!_sessionStarted && !_isCheckingSetup && _isValidSetup) ...[
-              Text(
-                'Press the button below to start the session and generate a QR code for attendance.',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.grey[600]),
+              const EmptyStateCard(
+                message: 'Start session to generate attendance QR code.',
+                hint: 'Students can scan and mark attendance instantly.',
+                icon: Icons.qr_code_2_outlined,
               ),
-              SizedBox(height: 24),
-              ElevatedButton.icon(
-                icon: Icon(Icons.play_arrow),
-                label: Text('Start Session'),
-                style: ElevatedButton.styleFrom(
-                  minimumSize: Size(double.infinity, 50),
-                  backgroundColor: Colors.green,
-                  foregroundColor: Colors.white,
+              const SizedBox(height: 20),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  'Allowed check-in radius',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w600,
+                    color: Colors.grey[800],
+                  ),
                 ),
-                onPressed: _startSession,
               ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  const Icon(Icons.radar, size: 20),
+                  const SizedBox(width: 8),
+                  Text(
+                    '${_radiusMetres.toStringAsFixed(0)} metres',
+                    style: const TextStyle(fontWeight: FontWeight.w500),
+                  ),
+                ],
+              ),
+              Slider(
+                value: _radiusMetres,
+                min: 10,
+                max: 100,
+                divisions: 18,
+                label: '${_radiusMetres.toStringAsFixed(0)} m',
+                onChanged: (v) => setState(() => _radiusMetres = v),
+              ),
+              Text(
+                'Students must be within this distance from your position.',
+                style: TextStyle(color: Colors.grey[600], fontSize: 12),
+              ),
+              const SizedBox(height: 24),
+              if (_isAcquiringLocation) ...[
+                const CircularProgressIndicator(),
+                const SizedBox(height: 12),
+                Text(
+                  'Getting your location...',
+                  style: TextStyle(color: Colors.grey[600]),
+                ),
+              ] else
+                ElevatedButton.icon(
+                  icon: const Icon(Icons.play_arrow),
+                  label: const Text('Start Session'),
+                  style: ElevatedButton.styleFrom(
+                    minimumSize: const Size(double.infinity, 50),
+                    backgroundColor: Colors.green,
+                    foregroundColor: Colors.white,
+                  ),
+                  onPressed: _startSession,
+                ),
             ],
 
             if (_sessionStarted) ...[
-              Text(
-                'Show this QR code to your students',
-                style: TextStyle(
-                  fontSize: 16,
-                  color: Colors.grey[700],
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                decoration: BoxDecoration(
+                  color: Colors.green.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.green.shade200),
                 ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.location_on, size: 16, color: Colors.green.shade700),
+                    const SizedBox(width: 6),
+                    Text(
+                      _teacherPosition != null
+                          ? 'Live anchor active • ${_radiusMetres.toStringAsFixed(0)} m radius'
+                          : 'Acquiring location...',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: Colors.green.shade700,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+              const AppSectionHeader(
+                title: 'Session is live',
+                subtitle: 'Show this QR code to students in class',
               ),
               SizedBox(height: 16),
 

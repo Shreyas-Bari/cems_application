@@ -3,6 +3,7 @@ import '../services/auth_services.dart';
 import 'admin/admin_dashboard.dart';
 import 'student/student_dashboard.dart';
 import 'teacher/teacher_dashboard.dart';
+import '../widgets/ui_blocks.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -73,64 +74,77 @@ class _LoginScreenState extends State<LoginScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Scaffold(
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(32.0),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 400),
-            child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                Icons.school_rounded,
-                size: 56,
-                color: theme.colorScheme.primary,
-              ),
-              SizedBox(height: 16),
-              Text(
-                'CEMS',
-                style: theme.textTheme.headlineMedium?.copyWith(
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              Text(
-                'College attendance & schedule',
-                style: theme.textTheme.bodyMedium?.copyWith(
-                  color: theme.colorScheme.outline,
-                ),
-              ),
-              SizedBox(height: 40),
-              TextField(
-                controller: _emailController,
-                decoration: InputDecoration(
-                  labelText: 'Email',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              SizedBox(height: 16),
-              TextField(
-                controller: _passwordController,
-                obscureText: true,
-                decoration: InputDecoration(
-                  labelText: 'Password',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              SizedBox(height: 24),
-              if (_errorMessage.isNotEmpty)
-                Text(_errorMessage, style: TextStyle(color: Colors.red)),
-              SizedBox(height: 8),
-              _isLoading
-                  ? CircularProgressIndicator()
-                  : FilledButton(
-                      onPressed: _login,
-                      style: FilledButton.styleFrom(
-                        minimumSize: Size(double.infinity, 50),
-                      ),
-                      child: Text('Sign in'),
-                    ),
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [
+              theme.colorScheme.primary.withValues(alpha: 0.07),
+              theme.colorScheme.surface,
             ],
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
           ),
+        ),
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24.0),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 430),
+              child: Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.school_rounded,
+                        size: 56,
+                        color: theme.colorScheme.primary,
+                      ),
+                      const SizedBox(height: 14),
+                      const AppSectionHeader(
+                        title: 'Welcome to CEMS',
+                        subtitle: 'College attendance and timetable portal',
+                      ),
+                      const SizedBox(height: 22),
+                      TextField(
+                        controller: _emailController,
+                        decoration: const InputDecoration(
+                          labelText: 'Email',
+                          prefixIcon: Icon(Icons.alternate_email),
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      TextField(
+                        controller: _passwordController,
+                        obscureText: true,
+                        decoration: const InputDecoration(
+                          labelText: 'Password',
+                          prefixIcon: Icon(Icons.lock_outline),
+                        ),
+                      ),
+                      const SizedBox(height: 18),
+                      if (_errorMessage.isNotEmpty)
+                        Text(
+                          _errorMessage,
+                          style: TextStyle(color: theme.colorScheme.error),
+                        ),
+                      const SizedBox(height: 8),
+                      _isLoading
+                          ? const CircularProgressIndicator()
+                          : FilledButton.icon(
+                              onPressed: _login,
+                              icon: const Icon(Icons.login),
+                              style: FilledButton.styleFrom(
+                                minimumSize: const Size(double.infinity, 52),
+                              ),
+                              label: const Text('Sign in'),
+                            ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
           ),
         ),
       ),
