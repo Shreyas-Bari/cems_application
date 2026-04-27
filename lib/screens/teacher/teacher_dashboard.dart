@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'start_session_screen.dart';
 import '../../services/auth_services.dart';
+import '../../services/theme_service.dart';
 import '../login_screen.dart';
 import '../../widgets/schedule_card.dart';
 import '../../widgets/ui_blocks.dart';
@@ -59,21 +60,26 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
 
     if (subjectIds.isEmpty) return;
 
+    // Build a name map from the already-fetched subjects.
+    final subjectNameMap = <String, String>{};
+    for (final doc in subjectsSnap.docs) {
+      subjectNameMap[doc.id] = doc.data()['name']?.toString() ?? 'Unknown Subject';
+    }
+
     List<Map<String, dynamic>> scheduleList = [];
 
-    for (String subjectId in subjectIds) {
+    // Fetch all schedule rows for all subject IDs in batches.
+    for (var i = 0; i < subjectIds.length; i += 30) {
+      final batch = subjectIds.sublist(i, i + 30 > subjectIds.length ? subjectIds.length : i + 30);
       final scheduleSnap = await _db
           .collection('schedule')
-          .where('subjectId', isEqualTo: subjectId)
+          .where('subjectId', whereIn: batch)
           .get();
 
       for (var doc in scheduleSnap.docs) {
         final data = doc.data();
-        final subjectDoc =
-            await _db.collection('subjects').doc(subjectId).get();
-        final subjectName = subjectDoc.exists
-            ? subjectDoc.data()!['name']
-            : 'Unknown Subject';
+        final subjectId = data['subjectId']?.toString() ?? '';
+        final subjectName = subjectNameMap[subjectId] ?? 'Unknown Subject';
 
         scheduleList.add({
           'subject': _baseSubjectName(subjectName),
@@ -181,32 +187,35 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
       });
   }
 
-  /// Lecture vs lab attendance % per student for one subject in a division,
-  /// scoped to this teacher only.
   Future<List<Map<String, dynamic>>> _fetchStudentAttendanceForSubject({
     required String division,
     required Set<String> subjectIds,
   }) async {
-    final studentsSnap = await _db
-        .collection('users')
-        .where('role', isEqualTo: 'student')
-        .where('division', isEqualTo: division)
-        .get();
+    // Fetch students and sessions in parallel.
+    final futures = await Future.wait([
+      _db
+          .collection('users')
+          .where('role', isEqualTo: 'student')
+          .where('division', isEqualTo: division)
+          .get(),
+      _db
+          .collection('sessions')
+          .where('division', isEqualTo: division)
+          .where('teacherId', isEqualTo: widget.userData['uid'])
+          .get(),
+    ]);
+    final studentsSnap = futures[0] as QuerySnapshot;
+    final allSessions = futures[1] as QuerySnapshot;
 
-    final allSessions = await _db
-        .collection('sessions')
-        .where('division', isEqualTo: division)
-        .where('teacherId', isEqualTo: widget.userData['uid'])
-        .get();
     final sessions = allSessions.docs.where((d) {
-      final sid = d.data()['subjectId']?.toString() ?? '';
+      final sid = (d.data() as Map<String, dynamic>)['subjectId']?.toString() ?? '';
       return subjectIds.contains(sid);
     }).toList();
 
     final lectureSessionIds = <String>[];
     final labSessionIds = <String>[];
     for (final d in sessions) {
-      final t = d.data()['type']?.toString();
+      final t = (d.data() as Map<String, dynamic>)['type']?.toString();
       if (t == 'lab') {
         labSessionIds.add(d.id);
       } else {
@@ -214,35 +223,58 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
       }
     }
 
+    final allSessionIds = [...lectureSessionIds, ...labSessionIds];
+    if (allSessionIds.isEmpty) {
+      return studentsSnap.docs.map((doc) {
+        final data = doc.data() as Map<String, dynamic>;
+        return {
+          'name': data['name'],
+          'lecturePresent': 0,
+          'lectureTotal': 0,
+          'labPresent': 0,
+          'labTotal': 0,
+          'lecturePct': 0.0,
+          'labPct': 0.0,
+        };
+      }).toList();
+    }
+
+    // Batch-fetch ALL attendance records for these sessions in one go
+    // instead of O(students × sessions) individual queries.
+    final attendanceByStudent = <String, Set<String>>{};
+    for (var i = 0; i < allSessionIds.length; i += 30) {
+      final batch = allSessionIds.sublist(
+          i, i + 30 > allSessionIds.length ? allSessionIds.length : i + 30);
+      final snap = await _db
+          .collection('attendance')
+          .where('sessionId', whereIn: batch)
+          .where('status', isEqualTo: true)
+          .get();
+      for (final doc in snap.docs) {
+        final data = doc.data();
+        final studentId = data['studentId']?.toString();
+        final sessionId = data['sessionId']?.toString();
+        if (studentId != null && sessionId != null) {
+          attendanceByStudent
+              .putIfAbsent(studentId, () => <String>{})
+              .add(sessionId);
+        }
+      }
+    }
+
+    final lectureSessionSet = lectureSessionIds.toSet();
+    final labSessionSet = labSessionIds.toSet();
+
     final List<Map<String, dynamic>> studentStats = [];
 
     for (var studentDoc in studentsSnap.docs) {
-      final studentData = studentDoc.data();
+      final studentData = studentDoc.data() as Map<String, dynamic>;
       final studentId = studentDoc.id;
+      final attended = attendanceByStudent[studentId] ?? <String>{};
 
-      int lecturePresent = 0;
-      for (final sessionId in lectureSessionIds) {
-        final attendanceSnap = await _db
-            .collection('attendance')
-            .where('sessionId', isEqualTo: sessionId)
-            .where('studentId', isEqualTo: studentId)
-            .where('status', isEqualTo: true)
-            .limit(1)
-            .get();
-        if (attendanceSnap.docs.isNotEmpty) lecturePresent++;
-      }
-
-      int labPresent = 0;
-      for (final sessionId in labSessionIds) {
-        final attendanceSnap = await _db
-            .collection('attendance')
-            .where('sessionId', isEqualTo: sessionId)
-            .where('studentId', isEqualTo: studentId)
-            .where('status', isEqualTo: true)
-            .limit(1)
-            .get();
-        if (attendanceSnap.docs.isNotEmpty) labPresent++;
-      }
+      final lecturePresent =
+          attended.intersection(lectureSessionSet).length;
+      final labPresent = attended.intersection(labSessionSet).length;
 
       final lecTot = lectureSessionIds.length;
       final labTot = labSessionIds.length;
@@ -423,32 +455,52 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
                           final labT = s['labTotal'] as int;
                           final lecPct = s['lecturePct'] as double;
                           final labPct = s['labPct'] as double;
-                          final overallPct = ((lecP + labP) / (lecT + labT))*100;
-                          final color = _attendanceColor(overallPct, theme);
+                          final lectureColor = _attendanceColor(lecPct, theme);
+                          final labColor = _attendanceColor(labPct, theme);
 
                           return ListTile(
                             leading: CircleAvatar(
-                              backgroundColor: color,
+                              backgroundColor: theme.colorScheme.primaryContainer,
                               child: Text(
                                 name.isNotEmpty ? name[0] : '?',
-                                style: const TextStyle(color: Colors.white),
+                                style: TextStyle(
+                                  color: theme.colorScheme.onPrimaryContainer,
+                                ),
                               ),
                             ),
                             title: Text(name),
-                            subtitle: Text(
-                              'Lecture: $lecP/$lecT (${lecPct.toStringAsFixed(0)}%)  •  '
-                              'Lab: $labP/$labT (${labPct.toStringAsFixed(0)}%)',
+                            subtitle: Padding(
+                              padding: const EdgeInsets.only(top: 6),
+                              child: Wrap(
+                                spacing: 8,
+                                runSpacing: 8,
+                                children: [
+                                  Chip(
+                                    avatar: Icon(
+                                      Icons.menu_book_outlined,
+                                      size: 16,
+                                      color: lectureColor,
+                                    ),
+                                    label: Text(
+                                      'Lecture $lecP/$lecT (${lecPct.toStringAsFixed(0)}%)',
+                                    ),
+                                  ),
+                                  Chip(
+                                    avatar: Icon(
+                                      Icons.science_outlined,
+                                      size: 16,
+                                      color: labColor,
+                                    ),
+                                    label: Text(
+                                      'Lab $labP/$labT (${labPct.toStringAsFixed(0)}%)',
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
                             isThreeLine: true,
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(12),
-                            ),
-                            trailing: Text(
-                              '${overallPct.toStringAsFixed(1)}%',
-                              style: TextStyle(
-                                color: color,
-                                fontWeight: FontWeight.bold,
-                              ),
                             ),
                           );
                         },
@@ -721,6 +773,25 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
                   ],
                 ),
               ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        Card(
+          child: ValueListenableBuilder<ThemeMode>(
+            valueListenable: ThemeService.themeMode,
+            builder: (_, mode, __) => SwitchListTile(
+              secondary: Icon(
+                mode == ThemeMode.dark
+                    ? Icons.dark_mode_outlined
+                    : Icons.light_mode_outlined,
+              ),
+              title: const Text('Theme'),
+              subtitle: Text(
+                mode == ThemeMode.dark ? 'Dark mode' : 'Light mode',
+              ),
+              value: mode == ThemeMode.dark,
+              onChanged: ThemeService.setDark,
             ),
           ),
         ),

@@ -45,12 +45,30 @@ class _StartSessionScreenState extends State<StartSessionScreen> {
   @override
   void initState() {
     super.initState();
+    // Start GPS acquisition immediately so it's ready by the time
+    // the user taps "Start Session" — eliminates the 3-15s cold-start wait.
+    _startLocationTracking();
     _validateSetup();
   }
 
   Future<void> _validateSetup() async {
-    final subject = await _db.collection('subjects').doc(widget.subjectId).get();
-    if (!subject.exists || subject.data()?['teacherId'] != widget.teacherId) {
+    // Run both Firestore reads in parallel instead of sequentially.
+    final results = await Future.wait([
+      _db.collection('subjects').doc(widget.subjectId).get(),
+      _db
+          .collection('schedule')
+          .where('subjectId', isEqualTo: widget.subjectId)
+          .where('division', isEqualTo: widget.division)
+          .where('type', isEqualTo: widget.type)
+          .limit(1)
+          .get(),
+    ]);
+
+    final subject = results[0] as DocumentSnapshot;
+    final schedule = results[1] as QuerySnapshot;
+
+    if (!subject.exists || subject.data() is! Map<String, dynamic> ||
+        (subject.data() as Map<String, dynamic>)['teacherId'] != widget.teacherId) {
       if (!mounted) return;
       setState(() {
         _isValidSetup = false;
@@ -59,13 +77,6 @@ class _StartSessionScreenState extends State<StartSessionScreen> {
       return;
     }
 
-    final schedule = await _db
-        .collection('schedule')
-        .where('subjectId', isEqualTo: widget.subjectId)
-        .where('division', isEqualTo: widget.division)
-        .where('type', isEqualTo: widget.type)
-        .limit(1)
-        .get();
     if (!mounted) return;
     setState(() {
       _isValidSetup = schedule.docs.isNotEmpty;
@@ -104,7 +115,7 @@ class _StartSessionScreenState extends State<StartSessionScreen> {
 
     _locationSubscription = Geolocator.getPositionStream(
       locationSettings: const LocationSettings(
-        accuracy: LocationAccuracy.high,
+        accuracy: LocationAccuracy.medium,
         distanceFilter: 5,
       ),
     ).listen((position) async {
@@ -126,29 +137,26 @@ class _StartSessionScreenState extends State<StartSessionScreen> {
 
   Future<void> _startSession() async {
     if (!_isValidSetup) return;
-    setState(() => _isAcquiringLocation = true);
 
-    final locationOk = await _startLocationTracking();
-    if (!locationOk) {
-      if (mounted) setState(() => _isAcquiringLocation = false);
-      return;
-    }
-
-    for (var i = 0; i < 10; i++) {
-      if (_locationReady) break;
-      await Future.delayed(const Duration(milliseconds: 500));
-    }
-
-    if (!mounted) return;
-    if (_teacherPosition == null) {
+    // Location tracking was started in initState, so the GPS should
+    // already have a fix by now. If not, show a brief wait.
+    if (!_locationReady) {
+      setState(() => _isAcquiringLocation = true);
+      // Short wait — GPS has been warming up since screen opened.
+      for (var i = 0; i < 6; i++) {
+        if (_locationReady) break;
+        await Future.delayed(const Duration(milliseconds: 500));
+      }
+      if (!mounted) return;
+      if (_teacherPosition == null) {
+        setState(() => _isAcquiringLocation = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not get current location. Try again.')),
+        );
+        return;
+      }
       setState(() => _isAcquiringLocation = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Could not get current location. Try again.')),
-      );
-      return;
     }
-
-    setState(() => _isAcquiringLocation = false);
     final token = _generateToken();
     final now = DateTime.now();
 
@@ -183,9 +191,11 @@ class _StartSessionScreenState extends State<StartSessionScreen> {
   void _startCountdown() {
     _countdownTimer?.cancel();
     _countdownTimer = Timer.periodic(Duration(seconds: 1), (timer) {
-      setState(() {
-        _secondsLeft--;
-      });
+      if (_secondsLeft > 0) {
+        setState(() {
+          _secondsLeft--;
+        });
+      }
     });
   }
 
