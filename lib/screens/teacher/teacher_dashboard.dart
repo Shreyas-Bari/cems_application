@@ -4,6 +4,7 @@ import 'start_session_screen.dart';
 import '../../services/auth_services.dart';
 import '../login_screen.dart';
 import '../../widgets/schedule_card.dart';
+import '../../widgets/ui_blocks.dart';
 
 class TeacherDashboard extends StatefulWidget {
   final Map<String, dynamic> userData;
@@ -510,16 +511,49 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
   }
 
   Widget _dashboardSection(ThemeData theme) {
+    final lectureCount = _sessionStats.fold<int>(
+      0,
+      (sum, item) => sum + (item['lectures'] as int),
+    );
+    final labCount = _sessionStats.fold<int>(
+      0,
+      (sum, item) => sum + (item['labs'] as int),
+    );
     return ListView(
       physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.all(16.0),
       children: [
-        if (_sessionStats.isEmpty)
-          Text(
-            'No subject/division setup found. Ask admin to assign schedule.',
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: theme.colorScheme.outline,
+        const AppSectionHeader(
+          title: 'Teaching overview',
+          subtitle: 'Start sessions and monitor attendance by division',
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: QuickStatCard(
+                label: 'Total lectures',
+                value: '$lectureCount',
+                icon: Icons.menu_book_outlined,
+              ),
             ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: QuickStatCard(
+                label: 'Total labs',
+                value: '$labCount',
+                icon: Icons.science_outlined,
+                color: theme.colorScheme.tertiary,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        if (_sessionStats.isEmpty)
+          const EmptyStateCard(
+            message: 'No subject/division setup found.',
+            hint: 'Ask admin to assign schedule entries to your subjects.',
+            icon: Icons.school_outlined,
           )
         else
           ..._sessionStats.map((item) {
@@ -591,12 +625,16 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
     physics: const AlwaysScrollableScrollPhysics(),
     padding: const EdgeInsets.all(16.0),
     children: [
+      const AppSectionHeader(
+        title: 'Weekly timetable',
+        subtitle: 'Grouped by day with lecture/lab details',
+      ),
+      const SizedBox(height: 10),
       if (_schedule.isEmpty)
-        Text(
-          'No schedule entries. Ask admin to add your subjects.',
-          style: theme.textTheme.bodyMedium?.copyWith(
-            color: theme.colorScheme.outline,
-          ),
+        const EmptyStateCard(
+          message: 'No schedule entries.',
+          hint: 'Admin needs to add timetable rows for your subjects.',
+          icon: Icons.calendar_month_outlined,
         )
       else
         ...sortedDays.expand((day) {

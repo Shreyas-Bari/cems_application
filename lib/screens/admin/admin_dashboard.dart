@@ -6,6 +6,7 @@ import 'package:firebase_core/firebase_core.dart';
 import '../../services/auth_services.dart';
 import '../../firebase_options.dart';
 import '../login_screen.dart';
+import '../../widgets/ui_blocks.dart';
 
 String _teacherLabel(String id, Map<String, dynamic> data) {
   final name = data['name']?.toString();
@@ -356,7 +357,7 @@ class _AdminDashboardState extends State<AdminDashboard>
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Spiderman'),
+        title: const Text('Admin Console'),
         bottom: TabBar(
           controller: _tabController,
           tabs: [
@@ -397,11 +398,9 @@ class _AdminDashboardState extends State<AdminDashboard>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
-            'Create class (subject)',
-            style: theme.textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w600,
-            ),
+          const AppSectionHeader(
+            title: 'Create class (subject)',
+            subtitle: 'Add a subject and map it to a teacher',
           ),
           const SizedBox(height: 12),
           TextField(
@@ -450,11 +449,9 @@ class _AdminDashboardState extends State<AdminDashboard>
             label: const Text('Add subject'),
           ),
           const SizedBox(height: 28),
-          Text(
-            'Existing subjects',
-            style: theme.textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w600,
-            ),
+          const AppSectionHeader(
+            title: 'Existing subjects',
+            subtitle: 'Manage teacher mapping and subject records',
           ),
           const SizedBox(height: 8),
           StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
@@ -561,11 +558,9 @@ class _AdminDashboardState extends State<AdminDashboard>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
-            'Add timetable slot',
-            style: theme.textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w600,
-            ),
+          const AppSectionHeader(
+            title: 'Add timetable slot',
+            subtitle: 'Assign subject, division, day, and session type',
           ),
           const SizedBox(height: 12),
           StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
@@ -642,11 +637,9 @@ class _AdminDashboardState extends State<AdminDashboard>
             label: const Text('Add slot'),
           ),
           const SizedBox(height: 28),
-          Text(
-            'All slots',
-            style: theme.textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w600,
-            ),
+          const AppSectionHeader(
+            title: 'All slots',
+            subtitle: 'Edit or delete schedule entries',
           ),
           const SizedBox(height: 8),
           StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
@@ -783,11 +776,9 @@ class _AdminDashboardState extends State<AdminDashboard>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
-            'Create teacher account (frontend)',
-            style: theme.textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w600,
-            ),
+          const AppSectionHeader(
+            title: 'Create teacher account',
+            subtitle: 'Provision Firebase Auth and Firestore profile',
           ),
           const SizedBox(height: 12),
           TextField(
@@ -814,11 +805,9 @@ class _AdminDashboardState extends State<AdminDashboard>
             label: const Text('Create teacher auth'),
           ),
           const SizedBox(height: 24),
-          Text(
-            'Or map existing UID (Firestore only)',
-            style: theme.textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w600,
-            ),
+          const AppSectionHeader(
+            title: 'Map existing UID',
+            subtitle: 'Use this for already-created Firebase Auth users',
           ),
           const SizedBox(height: 12),
           TextField(
@@ -835,11 +824,9 @@ class _AdminDashboardState extends State<AdminDashboard>
             label: const Text('Save profile by UID'),
           ),
           const SizedBox(height: 28),
-          Text(
-            'Teachers',
-            style: theme.textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w600,
-            ),
+          const AppSectionHeader(
+            title: 'Teachers',
+            subtitle: 'Current teacher profiles in Firestore',
           ),
           const SizedBox(height: 8),
           StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
