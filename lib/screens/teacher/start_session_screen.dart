@@ -34,7 +34,7 @@ class _StartSessionScreenState extends State<StartSessionScreen> {
   bool _sessionStarted = false;
   bool _isValidSetup = false;
   bool _isCheckingSetup = true;
-  int _secondsLeft = 15;
+  int _secondsLeft = 25;
   Timer? _countdownTimer;
   StreamSubscription<Position>? _locationSubscription;
   Position? _teacherPosition;
@@ -192,7 +192,7 @@ class _StartSessionScreenState extends State<StartSessionScreen> {
       'batch': null,
       'qrToken': token,
       'tokenExpiry': Timestamp.fromDate(
-        now.add(const Duration(seconds: 15)),
+        now.add(const Duration(seconds: 25)),
       ),
       'isActive': true,
       'latitude': _teacherPosition!.latitude,
@@ -204,7 +204,7 @@ class _StartSessionScreenState extends State<StartSessionScreen> {
       _sessionId = sessionRef.id;
       _currentToken = token;
       _sessionStarted = true;
-      _secondsLeft = 15;
+      _secondsLeft = 25;
     });
 
     _startTokenRefresh();
@@ -224,9 +224,9 @@ class _StartSessionScreenState extends State<StartSessionScreen> {
 
   void _startTokenRefresh() {
     _tokenRefreshTimer?.cancel();
-    _tokenRefreshTimer = Timer.periodic(Duration(seconds: 15), (_) async {
+    _tokenRefreshTimer = Timer.periodic(Duration(seconds: 25), (_) async {
       final newToken = _generateToken();
-      final expiry = DateTime.now().add(Duration(seconds: 15));
+      final expiry = DateTime.now().add(Duration(seconds: 25));
 
       await _db.collection('sessions').doc(_sessionId).update({
         'qrToken': newToken,
@@ -235,7 +235,7 @@ class _StartSessionScreenState extends State<StartSessionScreen> {
 
       setState(() {
         _currentToken = newToken;
-        _secondsLeft = 15;
+        _secondsLeft = 25;
       });
 
       _startCountdown();
@@ -454,7 +454,7 @@ class _StartSessionScreenState extends State<StartSessionScreen> {
               SizedBox(height: 8),
 
               LinearProgressIndicator(
-                value: _secondsLeft / 15,
+                value: _secondsLeft / 25,
                 backgroundColor: Colors.grey[300],
                 color: _secondsLeft <= 10 ? Colors.red : Colors.green,
               ),

@@ -75,11 +75,22 @@ class _ScanAttendanceScreenState extends State<ScanAttendanceScreen> {
         .get();
 
     if (sessionSnap.docs.isEmpty) {
+      // Could be wrong division OR invalid/expired token
+      // Check if there's an active session with this token for ANY division
+      final anyDivisionSnap = await _db
+          .collection('sessions')
+          .where('qrToken', isEqualTo: scannedToken)
+          .where('isActive', isEqualTo: true)
+          .limit(1)
+          .get();
+
       setState(() {
         _isProcessing = false;
         _done = true;
         _success = false;
-        _message = 'Invalid or expired QR code. Ask your teacher to refresh it.';
+        _message = anyDivisionSnap.docs.isNotEmpty
+            ? 'This session belongs to a different division. You cannot mark attendance here.'
+            : 'Invalid or expired QR code. Please scan the latest QR shown by your teacher.';
       });
       return;
     }
@@ -95,7 +106,7 @@ class _ScanAttendanceScreenState extends State<ScanAttendanceScreen> {
         _isProcessing = false;
         _done = true;
         _success = false;
-        _message = 'QR code has expired. Ask your teacher to refresh it.';
+        _message = 'This QR code has expired. Wait for the next QR to appear and scan again.';
       });
       return;
     }
@@ -108,15 +119,39 @@ class _ScanAttendanceScreenState extends State<ScanAttendanceScreen> {
     double? studentLng;
 
     if (lat != null && lng != null) {
-      // Use the pre-fetched position if available, otherwise fetch now.
-      final studentPos = _cachedPosition ?? await _getStudentPosition();
+      // Run location check and duplicate-attendance check in parallel for speed.
+      final studentPosFuture = _cachedPosition != null
+          ? Future.value(_cachedPosition)
+          : _getStudentPosition();
+      final existingFuture = _db
+          .collection('attendance')
+          .where('sessionId', isEqualTo: sessionId)
+          .where('studentId', isEqualTo: widget.studentId)
+          .limit(1)
+          .get();
+
+      final results = await Future.wait([studentPosFuture, existingFuture]);
+      final studentPos = results[0] as Position?;
+      final existingSnap = results[1] as QuerySnapshot;
+
+      // Check duplicate first
+      if (existingSnap.docs.isNotEmpty) {
+        setState(() {
+          _isProcessing = false;
+          _done = true;
+          _success = false;
+          _message = 'Your attendance is already recorded for this session.';
+        });
+        return;
+      }
+
       if (studentPos == null) {
         setState(() {
           _isProcessing = false;
           _done = true;
           _success = false;
           _message =
-              'Location permission is required to mark attendance. Enable location and try again.';
+              'Location access is required to verify your presence. Please enable location services and try again.';
         });
         return;
       }
@@ -124,36 +159,37 @@ class _ScanAttendanceScreenState extends State<ScanAttendanceScreen> {
       studentLat = studentPos.latitude;
       studentLng = studentPos.longitude;
       distance = Geolocator.distanceBetween(lat, lng, studentLat, studentLng);
-      if (distance != null && distance > radius) {
+      if (distance > radius) {
         setState(() {
           _isProcessing = false;
           _done = true;
           _success = false;
           _message =
-              'You are outside allowed range.\nDistance: ${distance!.toStringAsFixed(0)} m • Limit: ${radius.toStringAsFixed(0)} m';
+              'You are too far from the classroom.\nYour distance: ${distance!.toStringAsFixed(0)} m — Allowed: ${radius.toStringAsFixed(0)} m';
+        });
+        return;
+      }
+    } else {
+      // No location on session — just check for duplicate
+      final existingSnap = await _db
+          .collection('attendance')
+          .where('sessionId', isEqualTo: sessionId)
+          .where('studentId', isEqualTo: widget.studentId)
+          .limit(1)
+          .get();
+
+      if (existingSnap.docs.isNotEmpty) {
+        setState(() {
+          _isProcessing = false;
+          _done = true;
+          _success = false;
+          _message = 'Your attendance is already recorded for this session.';
         });
         return;
       }
     }
 
-    // Check if student already marked attendance for this session
-    final existingSnap = await _db
-        .collection('attendance')
-        .where('sessionId', isEqualTo: sessionId)
-        .where('studentId', isEqualTo: widget.studentId)
-        .get();
-
-    if (existingSnap.docs.isNotEmpty) {
-      setState(() {
-        _isProcessing = false;
-        _done = true;
-        _success = false;
-        _message = 'You have already marked attendance for this session.';
-      });
-      return;
-    }
-
-    // All checks passed - mark attendance (sessionType mirrors session for rules & stats)
+    // All checks passed — mark attendance
     final sessionType = sessionData['type']?.toString() ?? 'lecture';
     final attendanceId = '${sessionId}_${widget.studentId}';
     await _db.collection('attendance').doc(attendanceId).set({
@@ -172,7 +208,7 @@ class _ScanAttendanceScreenState extends State<ScanAttendanceScreen> {
       _isProcessing = false;
       _done = true;
       _success = true;
-      _message = 'Attendance marked successfully!';
+      _message = 'Attendance marked successfully! ✓';
     });
   }
 
@@ -194,8 +230,16 @@ class _ScanAttendanceScreenState extends State<ScanAttendanceScreen> {
                           _success ? Icons.check_circle_outline : Icons.error_outline,
                       message: _message,
                       hint: _success
-                          ? 'You can return to dashboard now.'
-                          : 'Please ask your teacher to refresh the QR.',
+                          ? 'You can return to the dashboard now.'
+                          : _message.contains('division')
+                              ? 'Make sure you are scanning the QR for your own division.'
+                              : _message.contains('far')
+                                  ? 'Move closer to the classroom and try again.'
+                                  : _message.contains('already')
+                                      ? 'No action needed — you\'re all set.'
+                                      : _message.contains('Location')
+                                          ? 'Go to Settings → Location and enable it.'
+                                          : 'Wait for the next QR and scan again.',
                     ),
                     const SizedBox(height: 16),
                     FilledButton(
