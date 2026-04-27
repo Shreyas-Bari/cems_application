@@ -40,7 +40,7 @@ class _StartSessionScreenState extends State<StartSessionScreen> {
   Position? _teacherPosition;
   bool _locationReady = false;
   bool _isAcquiringLocation = false;
-  double _radiusMetres = 30;
+  double _radiusMetres = 50;
 
   @override
   void initState() {
@@ -113,6 +113,22 @@ class _StartSessionScreenState extends State<StartSessionScreen> {
       return false;
     }
 
+    // Get an immediate position first — getPositionStream with distanceFilter
+    // may not fire its first event until the device moves, which blocks session start.
+    try {
+      final position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.medium,
+      );
+      if (!mounted) return false;
+      setState(() {
+        _teacherPosition = position;
+        _locationReady = true;
+      });
+    } catch (e) {
+      // getCurrentPosition failed — we'll still try the stream below.
+    }
+
+    // Start the stream for live location updates during the session.
     _locationSubscription = Geolocator.getPositionStream(
       locationSettings: const LocationSettings(
         accuracy: LocationAccuracy.medium,
