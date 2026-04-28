@@ -6,6 +6,7 @@ import '../../services/theme_service.dart';
 import '../login_screen.dart';
 import '../../widgets/schedule_card.dart';
 import '../../widgets/ui_blocks.dart';
+import '../../widgets/loading_shimmer.dart';
 
 class StudentDashboard extends StatefulWidget {
   final Map<String, dynamic> userData;
@@ -318,8 +319,8 @@ class _StudentDashboardState extends State<StudentDashboard> {
               onPressed: () {
                 Navigator.push(
                   context,
-                  MaterialPageRoute(
-                    builder: (_) => ScanAttendanceScreen(
+                  SlideUpRoute(
+                    page: ScanAttendanceScreen(
                       studentId: widget.userData['uid'],
                       division: widget.userData['division'],
                     ),
@@ -329,7 +330,7 @@ class _StudentDashboardState extends State<StudentDashboard> {
             )
           : null,
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? const ShimmerLoading()
           : RefreshIndicator(
               onRefresh: () async {
                 setState(() => _isLoading = true);
@@ -419,26 +420,35 @@ class _StudentDashboardState extends State<StudentDashboard> {
             icon: Icons.calendar_month_outlined,
           )
         else
-          Card(
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: DataTable(
-                columnSpacing: 18,
-                columns: const [
-                  DataColumn(label: Text('Day')),
-                  DataColumn(label: Text('10:00 AM - 12:00 PM')),
-                  DataColumn(label: Text('12:00 PM - 2:00 PM')),
-                ],
-                rows: days.map((day) {
-                  return DataRow(cells: [
-                    DataCell(Text(day)),
-                    DataCell(Text(table[day]!['10-12']!)),
-                    DataCell(Text(table[day]!['12-2']!)),
-                  ]);
-                }).toList(),
-              ),
-            ),
-          ),
+          ...days
+              .where((day) => _schedule.any((s) => s['day'] == day))
+              .map((day) {
+            final daySlots =
+                _schedule.where((s) => s['day'] == day).toList()
+                  ..sort((a, b) => (a['time']?.toString() ?? '')
+                      .compareTo(b['time']?.toString() ?? ''));
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.only(top: 8, bottom: 6),
+                  child: Text(
+                    day,
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      color: theme.colorScheme.primary,
+                    ),
+                  ),
+                ),
+                ...daySlots.map((slot) => ScheduleCard(
+                      title: slot['subject']?.toString() ?? '-',
+                      time: slot['time']?.toString() ?? '',
+                      subtitle: _typeLabelFromFirestore(slot['type']),
+                      isLab: _isFirestoreLab(slot['type']),
+                    )),
+              ],
+            );
+          }),
       ],
     );
   }
@@ -589,23 +599,6 @@ class _StudentDashboardState extends State<StudentDashboard> {
                   widget.userData['email']?.toString() ?? '',
                   style: theme.textTheme.bodyMedium
                       ?.copyWith(color: theme.colorScheme.outline),
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    OutlinedButton.icon(
-                      onPressed: null,
-                      icon: const Icon(Icons.photo_camera_outlined),
-                      label: const Text('Change'),
-                    ),
-                    const SizedBox(width: 8),
-                    OutlinedButton.icon(
-                      onPressed: null,
-                      icon: const Icon(Icons.delete_outline),
-                      label: const Text('Remove'),
-                    ),
-                  ],
                 ),
               ],
             ),

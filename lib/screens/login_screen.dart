@@ -104,7 +104,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       const SizedBox(height: 14),
                       const AppSectionHeader(
                         title: 'Welcome to CEMS',
-                        subtitle: 'College attendance and timetable portal 1.24v',
+                        subtitle: 'College attendance and timetable portal 1.25v',
                       ),
                       const SizedBox(height: 22),
                       TextField(

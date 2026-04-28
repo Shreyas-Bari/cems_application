@@ -153,6 +153,23 @@ class _AdminDashboardState extends State<AdminDashboard>
   }
 
   Future<void> _deleteTeacherProfile(String uid) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Remove teacher?'),
+        content: const Text('This will permanently delete this teacher\'s profile from the system.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('Remove'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
     await _db.collection('users').doc(uid).delete();
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -334,6 +351,23 @@ class _AdminDashboardState extends State<AdminDashboard>
   }
 
   Future<void> _deleteSubject(String id) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete subject?'),
+        content: const Text('This will permanently remove this subject. Related timetable slots will NOT be deleted.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
     await _db.collection('subjects').doc(id).delete();
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -343,6 +377,23 @@ class _AdminDashboardState extends State<AdminDashboard>
   }
 
   Future<void> _deleteSchedule(String id) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete timetable slot?'),
+        content: const Text('This will permanently remove this schedule entry.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
     await _db.collection('schedule').doc(id).delete();
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
