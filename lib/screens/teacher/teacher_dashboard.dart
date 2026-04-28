@@ -6,6 +6,7 @@ import '../../services/theme_service.dart';
 import '../login_screen.dart';
 import '../../widgets/schedule_card.dart';
 import '../../widgets/ui_blocks.dart';
+import '../../widgets/loading_shimmer.dart';
 
 class TeacherDashboard extends StatefulWidget {
   final Map<String, dynamic> userData;
@@ -302,8 +303,8 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
       String type) {
     Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (_) => StartSessionScreen(
+      SlideUpRoute(
+        page: StartSessionScreen(
           teacherId: widget.userData['uid'],
           subjectId: subjectId,
           subjectName: subjectName,
@@ -541,7 +542,7 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
         ],
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? const ShimmerLoading()
           : RefreshIndicator(
               onRefresh: () async {
                 setState(() => _isLoading = true);
@@ -754,23 +755,6 @@ class _TeacherDashboardState extends State<TeacherDashboard> {
                   style: theme.textTheme.bodyMedium?.copyWith(
                     color: theme.colorScheme.outline,
                   ),
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    OutlinedButton.icon(
-                      onPressed: null,
-                      icon: const Icon(Icons.photo_camera_outlined),
-                      label: const Text('Change'),
-                    ),
-                    const SizedBox(width: 8),
-                    OutlinedButton.icon(
-                      onPressed: null,
-                      icon: const Icon(Icons.delete_outline),
-                      label: const Text('Remove'),
-                    ),
-                  ],
                 ),
               ],
             ),

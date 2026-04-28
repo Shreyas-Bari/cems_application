@@ -420,52 +420,85 @@ class _StartSessionScreenState extends State<StartSessionScreen> {
                 title: 'Session is live',
                 subtitle: 'Show this QR code to students in class',
               ),
-              SizedBox(height: 16),
+              const SizedBox(height: 20),
 
-              Container(
-                padding: EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(12),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.grey.withOpacity(0.3),
-                      blurRadius: 10,
+              // QR code with circular countdown ring
+              SizedBox(
+                width: 290,
+                height: 290,
+                child: Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    // Circular countdown ring
+                    SizedBox(
+                      width: 290,
+                      height: 290,
+                      child: CircularProgressIndicator(
+                        value: _secondsLeft / 25,
+                        strokeWidth: 6,
+                        backgroundColor: Colors.grey.shade200,
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          _secondsLeft <= 5
+                              ? Colors.red
+                              : _secondsLeft <= 10
+                                  ? Colors.amber.shade700
+                                  : Colors.green,
+                        ),
+                      ),
+                    ),
+                    // QR container with glow
+                    Container(
+                      width: 260,
+                      height: 260,
+                      padding: const EdgeInsets.all(14),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(16),
+                        boxShadow: [
+                          BoxShadow(
+                            color: (_secondsLeft <= 5
+                                    ? Colors.red
+                                    : _secondsLeft <= 10
+                                        ? Colors.amber
+                                        : Colors.green)
+                                .withValues(alpha: 0.18),
+                            blurRadius: 20,
+                            spreadRadius: 2,
+                          ),
+                        ],
+                      ),
+                      child: QrImageView(
+                        data: _currentToken,
+                        version: QrVersions.auto,
+                        size: 230,
+                      ),
                     ),
                   ],
                 ),
-                child: QrImageView(
-                  data: _currentToken,
-                  version: QrVersions.auto,
-                  size: 250,
-                ),
               ),
 
-              SizedBox(height: 16),
+              const SizedBox(height: 16),
 
               Text(
                 'QR refreshes in $_secondsLeft seconds',
                 style: TextStyle(
                   fontSize: 14,
-                  color: _secondsLeft <= 10 ? Colors.red : Colors.grey[600],
+                  fontWeight: FontWeight.w500,
+                  color: _secondsLeft <= 5
+                      ? Colors.red
+                      : _secondsLeft <= 10
+                          ? Colors.amber.shade700
+                          : Colors.grey[600],
                 ),
               ),
 
-              SizedBox(height: 8),
-
-              LinearProgressIndicator(
-                value: _secondsLeft / 25,
-                backgroundColor: Colors.grey[300],
-                color: _secondsLeft <= 10 ? Colors.red : Colors.green,
-              ),
-
-              SizedBox(height: 32),
+              const SizedBox(height: 32),
 
               ElevatedButton.icon(
-                icon: Icon(Icons.stop),
-                label: Text('End Session'),
+                icon: const Icon(Icons.stop),
+                label: const Text('End Session'),
                 style: ElevatedButton.styleFrom(
-                  minimumSize: Size(double.infinity, 50),
+                  minimumSize: const Size(double.infinity, 50),
                   backgroundColor: Colors.red,
                   foregroundColor: Colors.white,
                 ),
