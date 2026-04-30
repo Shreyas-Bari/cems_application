@@ -43,3 +43,18 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Sensitive Firebase Files
+lib/firebase_options.dart
+ios/Runner/GoogleService-Info.plist
+android/app/google-services.json
+
+# Tooling and Build
+.dart_tool/
+.idea/
+.vscode/
+build/
+
+# Local configuration
+.env
+*.iml
