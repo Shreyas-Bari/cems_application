@@ -524,8 +524,6 @@ Contributions are welcome! To contribute:
 
 This project does not currently have a license. All rights are reserved by the author.
 
-> If you intend to open-source this project, consider adding an [MIT License](https://choosealicense.com/licenses/mit/) or another appropriate license.
-
 ---
 
 ## 🔮 Future Improvements / Roadmap
